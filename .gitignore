@@ -1,0 +1,6 @@
+# macOS
+.DS_Store
+._*
+# сборка
+/game-template
+/server
