@@ -5,9 +5,9 @@
 
   // Настройки раунда: здесь крутится сложность.
   var S = {
-    gravity: 2600,       // притяжение (выше — падение резче)
-    jump: 1050,          // сила прыжка
-    speedStart: 420,     // стартовая скорость препятствий, px/с
+    gravity: 5200,       // притяжение (выше — падение резче и прыжок короче)
+    jump: 1700,          // прыжок: высота ~280 px, полёт ~0,65 с
+    speedStart: 380,     // стартовая скорость препятствий, px/с
     speedMax: 1000,      // потолок скорости
     speedStep: 18,       // прибавка скорости за каждое пройденное препятствие
     spawnStart: 1500,    // пауза между препятствиями, мс
@@ -28,7 +28,8 @@
   // this.load.image("hero", "<url файла проекта>") и убрать генерацию.
   PlayScene.prototype.preload = function () {
     makeRect(this, "hero", 84, 110, 0x4f7cff);
-    makeRect(this, "block", 76, 96, 0xff5f6d);
+    makeRect(this, "block", 70, 72, 0xff5f6d);      // низкое препятствие
+    makeRect(this, "blockTall", 70, 132, 0xff5f6d); // высокое
     makeRect(this, "ground", 8, 8, 0x2a2f45);
   };
 
@@ -45,7 +46,7 @@
     this.add.rectangle(W / 2, H / 2, W, H, 0x101018);
     this.add.rectangle(W / 2, GROUND_Y + 60, W, 240, 0x1b1f33);
 
-    this.hero = this.physics.add.sprite(180, GROUND_Y - 60, "hero");
+    this.hero = this.physics.add.sprite(160, GROUND_Y - 60, "hero");
     this.hero.body.setGravityY(S.gravity);
     this.hero.setCollideWorldBounds(true);
 
@@ -97,10 +98,11 @@
 
   function spawn(scene) {
     if (scene.over) return;
-    var tall = Math.random() < 0.35;
-    var b = scene.blocks.create(global.ZV.WIDTH + 80, GROUND_Y - (tall ? 90 : 48), "block");
-    b.setDisplaySize(76, tall ? 180 : 96);
-    b.body.setSize(76, tall ? 180 : 96);
+    // Две готовые текстуры вместо растягивания одной: масштаб спрайта
+    // множится на размер тела, и хитбокс перестаёт совпадать с картинкой.
+    var tall = Math.random() < 0.3;
+    var h = tall ? 132 : 72;
+    var b = scene.blocks.create(global.ZV.WIDTH + 80, GROUND_Y - h / 2, tall ? "blockTall" : "block");
     b.setVelocityX(-scene.speed);
   }
 

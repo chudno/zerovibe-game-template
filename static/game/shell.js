@@ -162,6 +162,7 @@
       input: { activePointers: 2 },
       scene: scenes
     });
+    global.ZV.game = game; // ссылка для отладки из консоли
     return game;
   }
 
@@ -171,6 +172,9 @@
     if (!d || d.source !== "zv-host") return;
     if (d.type === "restart" && game) {
       post("start");
+      // Гасим то, что сейчас на экране: иначе результат остаётся поверх игры.
+      game.scene.stop("zv-result");
+      game.scene.stop("zv-menu");
       game.scene.start("zv-play");
     }
   });

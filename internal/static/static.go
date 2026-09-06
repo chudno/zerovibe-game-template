@@ -64,16 +64,14 @@ func Handler(files fs.FS) http.Handler {
 	})
 }
 
-// cacheControl: движок в vendor/ прибит версией — кэшируется навсегда;
-// оболочка не кэшируется, иначе после публикации у игрока остаётся старая.
+// cacheControl: движок в vendor/ прибит версией — кэшируется навсегда.
+// Остальное не кэшируется: код игры и заглушки меняются с каждой выкладкой,
+// а браузер, показавший старую пару html+js, ломает игру молча.
 func cacheControl(name, ext string) string {
 	if strings.HasPrefix(name, "vendor/") {
 		return "public, max-age=31536000, immutable"
 	}
-	if ext == ".html" {
-		return "no-store"
-	}
-	return "public, max-age=300"
+	return "no-store"
 }
 
 func itoa(n int) string {

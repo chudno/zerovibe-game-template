@@ -47,6 +47,13 @@ func TestДвижокКэшируетсяНавсегда(t *testing.T) {
 	}
 }
 
+func TestКодИгрыНеКэшируется(t *testing.T) {
+	rec := serve(t, "/game/config.js")
+	if rec.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("Cache-Control %q: старый js в паре с новым html ломает игру", rec.Header().Get("Cache-Control"))
+	}
+}
+
 func TestТипыПоРасширению(t *testing.T) {
 	cases := map[string]string{
 		"/assets/placeholder.png": "image/png",
