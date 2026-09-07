@@ -63,7 +63,8 @@
     this.spawnDelay = S.spawnStart;
     this.over = false;
 
-    this.add.rectangle(W / 2, H / 2, W, H, 0x101018);
+    // depth -20: у фона -10, без этого заливка рисуется поверх картинки.
+    this.add.rectangle(W / 2, H / 2, W, H, 0x101018).setDepth(-20);
     drawBackground(this, W, H);
 
     this.basket = this.physics.add.sprite(W / 2, BASKET_Y, "basket");
@@ -183,17 +184,43 @@
     });
   }
 
-  // Фон: tileSprite только для текстуры со сторонами 64/128/256, иначе
-  // обычная картинка с целым масштабом.
+  // Фон подгоняется под канву: картинка крупнее канвы раньше рисовалась 1:1
+  // и показывала только центральный кусок.
+  //   tile:true + POT          — tileSprite;
+  //   кратно крупнее (720/360) — масштаб 1/n;
+  //   кратно мельче            — целый апскейл ×n;
+  //   иначе                    — cover через setDisplaySize.
   function drawBackground(scene, W, H) {
-    if (!scene.textures.exists("bg") || scene.bgFailed) return;
+    if (!scene.textures.exists("bg") || scene.bgFailed) return false;
     var src = scene.textures.get("bg").getSourceImage();
-    if (scene.bgTile && isPOT(src.width) && isPOT(src.height)) {
+    var sw = src.width, sh = src.height;
+    if (!sw || !sh) return false;
+
+    if (scene.bgTile && isPOT(sw) && isPOT(sh)) {
       scene.add.tileSprite(0, 0, W, H, "bg").setOrigin(0, 0).setDepth(-10);
-    } else {
-      var k = Math.max(1, Math.floor(Math.min(W / src.width, H / src.height)));
-      scene.add.image(W / 2, H / 2, "bg").setScale(k).setDepth(-10);
+      return true;
     }
+
+    var img = scene.add.image(W / 2, H / 2, "bg").setDepth(-10);
+    var down = fitDivisor(sw, sh, W, H);
+    if (down > 1) {
+      img.setScale(1 / down);
+    } else {
+      var up = Math.floor(Math.min(W / sw, H / sh));
+      if (up >= 1) img.setScale(up);
+      else {
+        var cover = Math.max(W / sw, H / sh);
+        img.setDisplaySize(Math.ceil(sw * cover), Math.ceil(sh * cover));
+      }
+    }
+    return true;
+  }
+
+  // Общий целый делитель: картинка ровно в n раз больше канвы по обеим сторонам.
+  function fitDivisor(sw, sh, W, H) {
+    if (sw % W || sh % H) return 0;
+    var n = sw / W;
+    return n === sh / H && n >= 1 ? n : 0;
   }
 
   function isPOT(v) {
