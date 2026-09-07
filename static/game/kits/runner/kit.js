@@ -22,9 +22,11 @@
   var GROUND_Y = 490;    // верх дорожки на канве 360×640
   var TILE = 32;         // тайл земли: сторона степень двойки — можно tileSprite
 
-  // Тело героя в единицах текстуры заглушки (32×50). Меняя картинку,
-  // меняй эти числа — и только их: остальное сделает ZV.sprite.apply.
-  var HERO_BODY = { bodyW: 24, bodyH: 46 };
+  // Тело героя. По умолчанию его считает ZV.sprite.apply по непрозрачной
+  // области первого кадра — для пиксель-арта с прозрачными полями это
+  // единственный способ поставить ноги на землю. Числа нужны только чтобы
+  // сузить хитбокс: bodyW/bodyH/offsetY из config.assets.hero перебивают
+  // автообрезку. Заглушка 32×50 полей не имеет — ей автообрезка не мешает.
 
   // Кадры анимации бега у заглушки; с настоящим листом их число берётся из
   // config.assets.hero.frames.
@@ -93,7 +95,23 @@
     this.floor = ZV.floor(this, W / 2, GROUND_Y, W, 0, 0x2a2f45);
 
     this.hero = this.physics.add.sprite(80, GROUND_Y, "hero").setDepth(3);
-    ZV.sprite.apply(this.hero, { anim: "run", bodyW: HERO_BODY.bodyW, bodyH: HERO_BODY.bodyH, scale: 1 });
+    var heroCfg = ((global.ZV_GAME && global.ZV_GAME.assets) || {}).hero || {};
+    ZV.sprite.apply(this.hero, {
+      anim: "run", scale: 1,
+      // Пусто — тело считается по непрозрачной области первого кадра.
+      // bodyW/bodyH/offsetY в config.assets.hero перебивают автообрезку:
+      // нужны, только если хочется хитбокс уже силуэта.
+      bodyW: heroCfg.bodyW, bodyH: heroCfg.bodyH, offsetY: heroCfg.offsetY
+    });
+    // Хитбокс чуть уже силуэта: касание плечом не считается столкновением.
+    // Высоту не трогаем — от неё зависит, что ноги стоят на земле.
+    if (!heroCfg.bodyW) {
+      var hb = this.hero.body;
+      var narrow = Math.max(8, Math.round(hb.width * 0.7));
+      var inset = Math.round((hb.width - narrow) / 2);
+      hb.setSize(narrow, hb.height, false);
+      hb.setOffset(hb.offset.x + inset, hb.offset.y);
+    }
     this.hero.body.setGravityY(S.gravity);
     this.hero.setCollideWorldBounds(true);
     // Дорожка тёмная — тень берём как отдельный спрайт с целыми размерами.
@@ -145,9 +163,15 @@
 
     if (this.shadow && this.shadow.zvFollow) this.shadow.zvFollow();
 
+    // «Приземление» засчитываем только после НАСТОЯЩЕГО отрыва: прыжок
+    // ставит флаг сам. Ловить его по blocked.down нельзя — этот признак
+    // мигает на стыке кадров, и «сок» приземления начинал сыпаться каждые
+    // несколько кадров подряд, раскачивая героя.
     var onGround = this.hero.body.blocked.down || this.hero.body.touching.down;
-    if (onGround && this.airborne) land(this);
-    this.airborne = !onGround;
+    if (onGround && this.airborne) {
+      this.airborne = false;
+      land(this);
+    }
 
     updateAnim(this, onGround);
   };
@@ -165,6 +189,7 @@
     if (scene.over) return;
     if (scene.hero.body.blocked.down || scene.hero.body.touching.down) {
       scene.hero.setVelocityY(-S.jump);
+      scene.airborne = true;   // отрыв — фактический, а не «показалось»
       global.ZV.sprite.playAnim(scene.hero, "jump", false);
     }
   }

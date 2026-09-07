@@ -110,24 +110,72 @@
   // сбрасывают тело под размер нового кадра и обнуляют offset. Если тело
   // задать один раз в create, после подстановки настоящего спрайта герой
   // «повисает» над полом или проваливается. Хелпер запоминает желаемое тело
-  // на спрайте и переприменяет его после каждой смены кадра.
+  // на спрайте и переприменяет его — но ТОЛЬКО когда размер кадра изменился
+  // (см. refresh): лишний setSize/setOffset на каждом кадре анимации дёргает
+  // тело относительно пола.
+
+  // Непрозрачная область первого кадра текстуры: пиксель-арт почти всегда
+  // приходит с прозрачными полями (у листа 96×96 ноги на y≈88, снизу ещё
+  // 8 px пустоты). Тело по размеру КАДРА встаёт ниже видимых ног — герой
+  // висит над землёй. Сканируем кадр один раз и кэшируем на текстуре.
+  function opaqueBounds(scene, key, frameName) {
+    var tex = scene.textures.get(key);
+    if (!tex) return null;
+    var cacheKey = "zvTrim:" + frameName;
+    if (tex[cacheKey]) return tex[cacheKey];
+    var frame = tex.get(frameName);
+    if (!frame) return null;
+    var w = frame.cutWidth, h = frame.cutHeight;
+    var res = null;
+    try {
+      var cv = Phaser.Display.Canvas.CanvasPool.create2D(null, w, h);
+      var ctx = cv.getContext("2d", { willReadFrequently: true });
+      ctx.clearRect(0, 0, w, h);
+      ctx.drawImage(frame.source.image, frame.cutX, frame.cutY, w, h, 0, 0, w, h);
+      var data = ctx.getImageData(0, 0, w, h).data;
+      var minX = w, maxX = -1, minY = h, maxY = -1;
+      for (var y = 0; y < h; y++) {
+        for (var x = 0; x < w; x++) {
+          if (data[(y * w + x) * 4 + 3] > 8) {
+            if (x < minX) minX = x;
+            if (x > maxX) maxX = x;
+            if (y < minY) minY = y;
+            if (y > maxY) maxY = y;
+          }
+        }
+      }
+      Phaser.Display.Canvas.CanvasPool.remove(cv);
+      if (maxX >= minX && maxY >= minY) {
+        res = { x: minX, y: minY, w: maxX - minX + 1, h: maxY - minY + 1, fw: w, fh: h };
+      }
+    } catch (e) {
+      // Текстура с чужого origin — canvas «испорчен» (tainted), пиксели не
+      // прочитать. Не беда: без обрезки тело будет по кадру, как раньше.
+      res = null;
+    }
+    tex[cacheKey] = res || { none: true, fw: w, fh: h };
+    return tex[cacheKey];
+  }
+
   var sprite = {
     // opts: { texture, frame, anim, bodyW, bodyH, offsetX, offsetY, scale }
     // Размеры тела — в единицах ТЕКСТУРЫ (масштаб Arcade учитывает сам).
     // scale только целый: дробный рвёт пиксельную сетку внутри спрайта.
     // Якорь спрайта ставим по низу ног (0.5, 1): при смене картинки другого
     // размера точка опоры остаётся на земле, герой не уезжает вверх/вниз.
+    // trim: false — не обрезать прозрачные поля (по умолчанию обрезаем).
     apply: function (obj, opts) {
       opts = opts || {};
       if (typeof opts.scale === "number") obj.setScale(Math.max(1, Math.round(opts.scale)));
       if (opts.origin !== false) obj.setOrigin(0.5, 1);
-      // origin пересчитан — база сдвига картинки (shiftView) устарела.
+      // origin пересчитан — база сдвига картинки устарела.
       obj.setData("zvOriginY", undefined);
 
       var spec = obj.getData("zvBody") || {};
       ["bodyW", "bodyH", "offsetX", "offsetY"].forEach(function (k) {
         if (typeof opts[k] === "number") spec[k] = opts[k];
       });
+      if (opts.trim === false) spec.noTrim = true;
       obj.setData("zvBody", spec);
 
       sprite.watch(obj);
@@ -136,7 +184,11 @@
       else if (typeof opts.frame !== "undefined") obj.setFrame(opts.frame);
       if (opts.anim) sprite.playAnim(obj, opts.anim, opts.animIgnoreIfPlaying !== false);
 
-      sprite.refresh(obj);
+      sprite.refresh(obj, true);
+      // Отдельно поднимать картинку не нужно: тело обрезано по ногам, и
+      // спрайт с origin по низу кадра встаёт ровно так, что ноги ложатся
+      // на верх тела-пола. Прозрачные поля остаются висеть НАД землёй,
+      // как им и положено.
       return obj;
     },
 
@@ -149,21 +201,59 @@
     },
 
     // Возвращает телу размер и смещение, записанные в zvBody.
-    // Смещение считаем от низа кадра: ноги должны совпадать с низом картинки.
     // Размеры в единицах текстуры — Arcade множит их на масштаб сам.
-    refresh: function (obj) {
+    //
+    // Тело считаем от НЕПРОЗРАЧНОЙ области кадра, а не от кадра целиком:
+    // иначе низ тела уезжает под видимые ноги на всю высоту прозрачных полей
+    // и герой висит в воздухе. bodyW/bodyH/offsetY из конфига перебивают
+    // автообрезку — на них последнее слово.
+    //
+    // force !== true и размер кадра не менялся — не трогаем тело вовсе.
+    // Лишний setSize/setOffset на КАЖДОМ кадре анимации переставляет тело
+    // относительно пола, Arcade теряет контакт и герой начинает дрожать.
+    refresh: function (obj, force) {
       var body = obj.body;
       var spec = obj.getData("zvBody");
       if (!body || !spec) return obj;
       var fw = obj.frame ? obj.frame.realWidth : obj.width;
       var fh = obj.frame ? obj.frame.realHeight : obj.height;
-      var w = spec.bodyW || fw;
-      var h = spec.bodyH || fh;
-      var ox = typeof spec.offsetX === "number" ? spec.offsetX : Math.round((fw - w) / 2);
-      var oy = typeof spec.offsetY === "number" ? spec.offsetY : (fh - h);
+
+      var sig = fw + "x" + fh;
+      if (force !== true && obj.getData("zvBodySig") === sig) return obj;
+      obj.setData("zvBodySig", sig);
+
+      // Обрезка прозрачных полей по первому кадру текстуры.
+      var trim = null;
+      if (!spec.noTrim && obj.texture && obj.frame && obj.scene) {
+        var names = obj.texture.getFrameNames();
+        var first = names.length ? names[0] : obj.frame.name;
+        var b = opaqueBounds(obj.scene, obj.texture.key, first);
+        if (b && !b.none && b.fw === fw && b.fh === fh) trim = b;
+      }
+
+      var w = spec.bodyW || (trim ? trim.w : fw);
+      var h = spec.bodyH || (trim ? trim.h : fh);
+      var ox = typeof spec.offsetX === "number" ? spec.offsetX
+        : (trim ? trim.x + Math.round((trim.w - w) / 2) : Math.round((fw - w) / 2));
+      // Низ тела — по низу непрозрачной области (ноги), а не по низу кадра.
+      var bottom = trim ? trim.y + trim.h : fh;
+      var oy = typeof spec.offsetY === "number" ? spec.offsetY : (bottom - h);
+
       body.setSize(w, h, false);
-      body.setOffset(ox, oy);
+      // Картинка может быть сдвинута «соком» (shiftView): он держит
+      // displayOriginY смещённым, и offset обязан остаться согласованным,
+      // иначе тело прыгнет ровно на величину сдвига.
+      var base = obj.getData("zvOriginY");
+      var shifted = typeof base === "number" ? (obj.displayOriginY - base) : 0;
+      body.setOffset(ox, oy + shifted);
+      obj.setData("zvFootPad", fh - bottom);
       return obj;
+    },
+
+    // Прозрачных пикселей под ногами в текущем кадре (0, если полей нет).
+    footPad: function (obj) {
+      var v = obj.getData("zvFootPad");
+      return typeof v === "number" ? v : 0;
     },
 
     // Подписка на события анимации: они меняют кадр, а значит и тело.
@@ -192,15 +282,33 @@
     return Math.max(min || 2, Math.round(v / 2) * 2);
   }
 
-  // Сдвиг ТОЛЬКО картинки на целое число пикселей (плюс — вверх), физика
-  // остаётся на месте. Держим базовый displayOriginY, чтобы сдвиги не копились.
+  // Сдвиг ТОЛЬКО картинки на целое число пикселей (плюс — вверх).
+  //
+  // ГРАБЛЯ, из-за которой герой дрожал: displayOriginY для этого НЕ ГОДИТСЯ.
+  // Arcade считает позицию тела как
+  //     body.position.y = gameObject.y + (body.offset.y - displayOriginY)
+  // (Body.updateFromGameObject), то есть displayOrigin входит в физику
+  // напрямую. Сдвиг картинки на 2 px поднимал тело на 2 px над полом,
+  // blocked.down гас, включалась гравитация, герой падал обратно, кит видел
+  // «приземление», снова звал squash — и цикл замыкался сам на себя.
+  //
+  // Физика читает с объекта ровно x, y, angle, scaleX, scaleY и
+  // displayOriginX/Y, причём в виде разности (offset.y − displayOriginY).
+  // Значит сдвиг картинки безопасен ровно тогда, когда мы одновременно
+  // сдвигаем body.offset.y на ту же величину: разность не меняется,
+  // body.position.y остаётся прежним, контакт с полом не рвётся.
   function shiftView(obj, dy) {
     var base = obj.getData("zvOriginY");
     if (typeof base !== "number") {
       base = obj.displayOriginY;
       obj.setData("zvOriginY", base);
     }
-    obj.setDisplayOrigin(obj.displayOriginX, base + Math.round(dy));
+    var want = base + (Math.round(dy) || 0);
+    var delta = want - obj.displayOriginY;
+    if (!delta) return;
+    obj.setDisplayOrigin(obj.displayOriginX, want);
+    // Компенсация: тело обязано остаться там же, где было.
+    if (obj.body) obj.body.setOffset(obj.body.offset.x, obj.body.offset.y + delta);
   }
 
   // Кадр, на который надо вернуться после подмены: у играющей анимации его
