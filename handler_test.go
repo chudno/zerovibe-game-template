@@ -100,3 +100,11 @@ func TestФункцияНеЗнаетЧужихПутей(t *testing.T) {
 		t.Fatalf("код %d, ждали 404", resp.StatusCode)
 	}
 }
+
+// /healthz — прогрев функции платформой: 200 без обращения к статике.
+func TestHandler_Healthz(t *testing.T) {
+	resp := call(t, "/healthz")
+	if resp.StatusCode != 200 {
+		t.Fatalf("/healthz: %d, ждали 200", resp.StatusCode)
+	}
+}

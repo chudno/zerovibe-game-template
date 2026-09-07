@@ -39,6 +39,14 @@ func Handler(files fs.FS) http.Handler {
 			return
 		}
 		name := strings.TrimPrefix(path.Clean("/"+r.URL.Path), "/")
+		// Прогрев функции платформой стучится в /healthz; без ответа 200 он
+		// четыре минуты ретраит 404 и задерживает превью после каждого хода.
+		if name == "healthz" {
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			w.Header().Set("Cache-Control", "no-store")
+			_, _ = w.Write([]byte("ok"))
+			return
+		}
 		if name == "" || name == "." {
 			name = "index.html"
 		}
