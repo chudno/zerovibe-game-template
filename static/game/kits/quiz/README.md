@@ -36,4 +36,6 @@ if (item.image) scene.pic.setTexture(item.image).setVisible(true);
 else scene.pic.setVisible(false);
 ```
 
-(объект `scene.pic` создайте в `create` через `scene.add.image(360, 480, "")`).
+(объект `scene.pic` создайте в `create` через `scene.add.image(180, 240, "")`
+— канва 360×640). Текст рисуйте только через `ZV.ui.text`: там пиксельный
+шрифт и `resolution` под экран, обычный `add.text` даст мыло.
