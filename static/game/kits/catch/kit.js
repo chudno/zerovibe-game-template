@@ -1,5 +1,6 @@
 // Кит «Ловилка»: корзина ездит за пальцем внизу, сверху сыплются предметы.
 // Хорошие ловим, плохие пропускаем. Раунд ограничен по времени.
+// Картинки подставляются только через ZV.sprite.apply.
 (function (global) {
   "use strict";
 
@@ -18,6 +19,14 @@
   };
 
   var BASKET_Y = 1120;
+
+  // Тела в единицах текстуры заглушек. Меняешь картинку — меняй эти числа.
+  var BASKET_BODY = { bodyW: 170, bodyH: 56, offsetY: 8 };
+  var ITEM_BODY = { bodyW: 40, bodyH: 40 };
+
+  // Ловим предмет не только по overlap, но и по отрезку, пройденному за кадр:
+  // при fallMax 820 px/с и просадке до 10 fps предмет проходит 82 px за кадр
+  // и перепрыгивает корзину высотой 70 px. Отсюда «свип» в update.
 
   function PlayScene() {
     Phaser.Scene.call(this, { key: "zv-play" });
@@ -44,7 +53,8 @@
 
     this.add.rectangle(W / 2, H / 2, W, H, 0x101018);
 
-    this.basket = this.physics.add.image(W / 2, BASKET_Y, "basket");
+    this.basket = this.physics.add.sprite(W / 2, BASKET_Y, "basket");
+    global.ZV.sprite.apply(this.basket, BASKET_BODY);
     this.basket.body.setAllowGravity(false);
     this.basket.setCollideWorldBounds(true);
 
@@ -80,6 +90,7 @@
     if (left <= 0) { finish(self, true); return; }
 
     this.items.getChildren().forEach(function (it) {
+      if (sweptCatch(self, it)) return;
       if (it.y > global.ZV.HEIGHT + 60) {
         var wasGood = it.getData("good");
         it.destroy();
@@ -92,6 +103,24 @@
     });
   };
 
+  // Отрезок, пройденный предметом за кадр, против прямоугольника корзины:
+  // ловит быстрый предмет, который overlap пропустил бы между кадрами.
+  function sweptCatch(scene, it) {
+    if (!it.active || !it.body) return false;
+    var prev = it.getData("prevY");
+    if (typeof prev !== "number") prev = it.y;
+    it.setData("prevY", it.y);
+
+    var box = scene.basket.body;
+    var top = box.y, bottom = box.y + box.height;
+    var crossed = (prev <= bottom && it.y >= top);
+    if (!crossed) return false;
+    var half = (it.body.width / 2) + box.width / 2;
+    if (Math.abs(it.x - scene.basket.x) > half) return false;
+    catchItem(scene, it);
+    return true;
+  }
+
   function moveTo(scene, x) {
     if (scene.over) return;
     scene.basket.x = Phaser.Math.Clamp(x, 100, global.ZV.WIDTH - 100);
@@ -102,13 +131,18 @@
     var good = Math.random() > S.badChance;
     var x = Phaser.Math.Between(90, global.ZV.WIDTH - 90);
     var it = scene.items.create(x, -60, good ? "good" : "bad");
+    global.ZV.sprite.apply(it, { origin: false, bodyW: ITEM_BODY.bodyW, bodyH: ITEM_BODY.bodyH });
     it.setData("good", good);
+    it.setData("prevY", it.y);
     it.body.setAllowGravity(false);
     it.setVelocityY(scene.fall);
   }
 
   function catchItem(scene, item) {
     if (scene.over) return;
+    // Один предмет — одно начисление: overlap и свип могут совпасть в кадре.
+    if (item.getData("taken")) return;
+    item.setData("taken", true);
     var good = item.getData("good");
     item.destroy();
     if (good) {
