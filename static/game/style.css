@@ -15,4 +15,13 @@ html, body {
   padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
   display: flex; align-items: center; justify-content: center;
 }
-#game canvas { display: block; }
+/* Пиксель-арт: без этого внутри канвы пиксели идеальны, а финальный
+   CSS-апскейл мылит их билинейно. Порядок важен — pixelated последним,
+   он побеждает в современных браузерах, crisp-edges остаётся фолбэком. */
+#game canvas {
+  display: block;
+  image-rendering: -moz-crisp-edges;
+  image-rendering: -webkit-crisp-edges;
+  image-rendering: crisp-edges;
+  image-rendering: pixelated;
+}

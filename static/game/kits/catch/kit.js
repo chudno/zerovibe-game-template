@@ -1,14 +1,15 @@
 // Кит «Ловилка»: корзина ездит за пальцем внизу, сверху сыплются предметы.
 // Хорошие ловим, плохие пропускаем. Раунд ограничен по времени.
-// Картинки подставляются только через ZV.sprite.apply.
+// Картинки подставляются только через ZV.sprite.apply. Канва 360×640,
+// пиксель-арт: масштаб спрайтов всегда 1.
 (function (global) {
   "use strict";
 
   var S = {
     duration: 45000,     // длительность раунда, мс
-    fallStart: 320,      // стартовая скорость падения, px/с
-    fallMax: 820,        // потолок скорости
-    fallStep: 12,        // прибавка за каждый пойманный предмет
+    fallStart: 160,      // стартовая скорость падения, px/с
+    fallMax: 410,        // потолок скорости
+    fallStep: 6,         // прибавка за каждый пойманный предмет
     spawnStart: 900,     // пауза между предметами, мс
     spawnMin: 380,
     spawnStep: 20,
@@ -18,15 +19,15 @@
     misses: 5            // сколько хороших можно уронить
   };
 
-  var BASKET_Y = 1120;
+  var BASKET_Y = 560;
 
   // Тела в единицах текстуры заглушек. Меняешь картинку — меняй эти числа.
-  var BASKET_BODY = { bodyW: 170, bodyH: 56, offsetY: 8 };
-  var ITEM_BODY = { bodyW: 40, bodyH: 40 };
+  var BASKET_BODY = { bodyW: 84, bodyH: 28, offsetY: 4 };
+  var ITEM_BODY = { bodyW: 20, bodyH: 20 };
 
   // Ловим предмет не только по overlap, но и по отрезку, пройденному за кадр:
-  // при fallMax 820 px/с и просадке до 10 fps предмет проходит 82 px за кадр
-  // и перепрыгивает корзину высотой 70 px. Отсюда «свип» в update.
+  // при fallMax 410 px/с и просадке до 10 fps предмет проходит 41 px за кадр
+  // и перепрыгивает корзину высотой 35 px. Отсюда «свип» в update.
 
   function PlayScene() {
     Phaser.Scene.call(this, { key: "zv-play" });
@@ -34,16 +35,27 @@
   PlayScene.prototype = Object.create(Phaser.Scene.prototype);
   PlayScene.prototype.constructor = PlayScene;
 
-  // Заглушки: заменяются на this.load.image("basket", "<url>") и т.д.
+  // Картинки из config.assets, если они там есть; иначе заглушки-фигуры.
   PlayScene.prototype.preload = function () {
-    makeRect(this, "basket", 180, 70, 0x4f7cff);
-    makeCircle(this, "good", 44, 0xffd23f);
-    makeCircle(this, "bad", 44, 0xff5f6d);
+    var a = (global.ZV_GAME && global.ZV_GAME.assets) || {};
+    var items = a.items || {};
+    var bg = a.background || {};
+
+    loadOrStub(this, "basket", items.basket, 90, 32, 0x4f7cff);
+    loadOrStub(this, "good", items.good, 22, 22, 0xffd23f);
+    loadOrStub(this, "bad", items.bad, 22, 22, 0xff5f6d);
+
+    this.bgTile = !!bg.tile;
+    if (bg.url) this.load.image("bg", bg.url);
+    this.load.on("loaderror", function (file) {
+      if (file.key === "bg") this.bgFailed = true;
+    }, this);
   };
 
   PlayScene.prototype.create = function () {
     var self = this;
     var W = global.ZV.WIDTH, H = global.ZV.HEIGHT;
+    var ZV = global.ZV;
 
     this.score = 0;
     this.missed = 0;
@@ -52,9 +64,10 @@
     this.over = false;
 
     this.add.rectangle(W / 2, H / 2, W, H, 0x101018);
+    drawBackground(this, W, H);
 
     this.basket = this.physics.add.sprite(W / 2, BASKET_Y, "basket");
-    global.ZV.sprite.apply(this.basket, BASKET_BODY);
+    ZV.sprite.apply(this.basket, BASKET_BODY);
     this.basket.body.setAllowGravity(false);
     this.basket.setCollideWorldBounds(true);
 
@@ -63,14 +76,14 @@
       catchItem(self, item);
     });
 
-    this.scoreText = this.add.text(W / 2, 120, "0", {
-      fontFamily: "system-ui, sans-serif", fontSize: "88px", color: "#ffffff", fontStyle: "bold"
+    this.scoreText = ZV.ui.text(this, W / 2, 60, "0", {
+      fontSize: "40px", fontStyle: "bold"
     }).setOrigin(0.5).setDepth(5);
-    this.livesText = this.add.text(W / 2, 210, "промахи: 0/" + S.misses, {
-      fontFamily: "system-ui, sans-serif", fontSize: "34px", color: "#9aa0b5"
+    this.livesText = ZV.ui.text(this, W / 2, 105, "промахи: 0/" + S.misses, {
+      fontSize: "16px", color: "#9aa0b5"
     }).setOrigin(0.5).setDepth(5);
-    this.timeText = this.add.text(W - 40, 120, "", {
-      fontFamily: "system-ui, sans-serif", fontSize: "40px", color: "#9aa0b5"
+    this.timeText = ZV.ui.text(this, W - 20, 60, "", {
+      fontSize: "16px", color: "#9aa0b5"
     }).setOrigin(1, 0.5).setDepth(5);
 
     // Корзина следует за пальцем; тап без движения тоже переставляет её.
@@ -91,7 +104,7 @@
 
     this.items.getChildren().forEach(function (it) {
       if (sweptCatch(self, it)) return;
-      if (it.y > global.ZV.HEIGHT + 60) {
+      if (it.y > global.ZV.HEIGHT + 30) {
         var wasGood = it.getData("good");
         it.destroy();
         if (wasGood) {
@@ -123,14 +136,15 @@
 
   function moveTo(scene, x) {
     if (scene.over) return;
-    scene.basket.x = Phaser.Math.Clamp(x, 100, global.ZV.WIDTH - 100);
+    // Целая координата: полпикселя мылит спрайт даже при pixelArt.
+    scene.basket.x = Math.round(Phaser.Math.Clamp(x, 50, global.ZV.WIDTH - 50));
   }
 
   function spawn(scene) {
     if (scene.over) return;
     var good = Math.random() > S.badChance;
-    var x = Phaser.Math.Between(90, global.ZV.WIDTH - 90);
-    var it = scene.items.create(x, -60, good ? "good" : "bad");
+    var x = Phaser.Math.Between(45, global.ZV.WIDTH - 45);
+    var it = scene.items.create(x, -30, good ? "good" : "bad");
     global.ZV.sprite.apply(it, { origin: false, bodyW: ITEM_BODY.bodyW, bodyH: ITEM_BODY.bodyH });
     it.setData("good", good);
     it.setData("prevY", it.y);
@@ -169,21 +183,37 @@
     });
   }
 
+  // Фон: tileSprite только для текстуры со сторонами 64/128/256, иначе
+  // обычная картинка с целым масштабом.
+  function drawBackground(scene, W, H) {
+    if (!scene.textures.exists("bg") || scene.bgFailed) return;
+    var src = scene.textures.get("bg").getSourceImage();
+    if (scene.bgTile && isPOT(src.width) && isPOT(src.height)) {
+      scene.add.tileSprite(0, 0, W, H, "bg").setOrigin(0, 0).setDepth(-10);
+    } else {
+      var k = Math.max(1, Math.floor(Math.min(W / src.width, H / src.height)));
+      scene.add.image(W / 2, H / 2, "bg").setScale(k).setDepth(-10);
+    }
+  }
+
+  function isPOT(v) {
+    return v > 0 && (v & (v - 1)) === 0;
+  }
+
+  function loadOrStub(scene, key, item, w, h, color) {
+    if (item && item.url) {
+      scene.load.image(key, item.url);
+      return;
+    }
+    makeRect(scene, key, w, h, color);
+  }
+
   function makeRect(scene, key, w, h, color) {
     if (scene.textures.exists(key)) return;
     var g = scene.make.graphics({ x: 0, y: 0, add: false });
     g.fillStyle(color, 1);
-    g.fillRoundedRect(0, 0, w, h, 12);
+    g.fillRect(0, 0, w, h);
     g.generateTexture(key, w, h);
-    g.destroy();
-  }
-
-  function makeCircle(scene, key, d, color) {
-    if (scene.textures.exists(key)) return;
-    var g = scene.make.graphics({ x: 0, y: 0, add: false });
-    g.fillStyle(color, 1);
-    g.fillCircle(d / 2, d / 2, d / 2);
-    g.generateTexture(key, d, d);
     g.destroy();
   }
 

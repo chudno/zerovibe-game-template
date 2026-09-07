@@ -1,11 +1,21 @@
 // Оболочка игры: экраны Играть → Игра → Результат, мобильный контур,
 // события родительскому окну. Киты о ней знают через ZV.finish/ZV.ui —
 // свои экраны меню и результата им рисовать не нужно.
+// Игры пиксель-арт: канва 360×640, ни одного дробного масштаба спрайтов.
 (function (global) {
   "use strict";
 
-  var WIDTH = 720;   // дизайн-канва: портрет, Scale.FIT подгонит под экран
-  var HEIGHT = 1280;
+  // Дизайн-канва: портрет, Scale.FIT растягивает её силами CSS.
+  // 360×640 делится на 8/16/32 — тайловая сетка сходится, ассеты 1:1.
+  var WIDTH = 360;
+  var HEIGHT = 640;
+
+  // Пиксельный шрифт: моноширинные системные — единственные, что не мылят
+  // мелкий кегль. Внешних шрифтов в игре нет (White Label, вес страницы).
+  var FONT = '"Courier New", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+  // Экранных пикселей на логический: без него текст в 2 раза меньше нужного
+  // растеризуется и мылится на апскейле.
+  var TEXT_RES = Math.min(global.devicePixelRatio || 1, 3);
 
   var config = global.ZV_GAME || {};
   var brand = config.brand || {};
@@ -36,20 +46,30 @@
     }
   }
 
+  // Текст пиксель-арта: целые координаты и своя растеризация под экран.
+  function label(scene, x, y, text, style) {
+    var s = { fontFamily: FONT, fontSize: "16px", color: "#ffffff", resolution: TEXT_RES };
+    if (style) {
+      for (var k in style) {
+        if (Object.prototype.hasOwnProperty.call(style, k)) s[k] = style[k];
+      }
+    }
+    return scene.add.text(Math.round(x), Math.round(y), text, s);
+  }
+
   // --- общие элементы интерфейса ----------------------------------------
   var ui = {
-    // Кнопка с тач-целью не меньше 48px в экранных пикселях.
-    button: function (scene, x, y, label, onTap, opts) {
+    // Тач-цель ≥24 логических px: при типичном масштабе это ≈48 css.
+    button: function (scene, x, y, text, onTap, opts) {
       opts = opts || {};
-      var w = opts.width || 420;
-      var h = opts.height || 128;
+      var w = opts.width || 208;
+      var h = opts.height || 64;
       var color = opts.color || PRIMARY;
-      var box = scene.add.rectangle(x, y, w, h, Phaser.Display.Color.HexStringToColor(color).color)
+      var box = scene.add.rectangle(Math.round(x), Math.round(y), w, h,
+        Phaser.Display.Color.HexStringToColor(color).color)
         .setOrigin(0.5).setInteractive({ useHandCursor: true });
-      box.setStrokeStyle(4, 0xffffff, 0.18);
-      var text = scene.add.text(x, y, label, {
-        fontFamily: "system-ui, sans-serif", fontSize: "44px", color: "#ffffff", fontStyle: "bold"
-      }).setOrigin(0.5);
+      box.setStrokeStyle(2, 0xffffff, 0.18);
+      var t = label(scene, x, y, text, { fontSize: opts.fontSize || "24px", fontStyle: "bold" }).setOrigin(0.5);
       // Тап засчитываем по pointerup — это ближе к ожиданиям на телефоне.
       box.on("pointerdown", function () { box.setAlpha(0.75); });
       box.on("pointerout", function () { box.setAlpha(1); });
@@ -57,31 +77,31 @@
         box.setAlpha(1);
         onTap();
       });
-      return { box: box, text: text };
+      return { box: box, text: t };
     },
 
-    title: function (scene, x, y, label, size) {
-      return scene.add.text(x, y, label, {
-        fontFamily: "system-ui, sans-serif",
-        fontSize: (size || 72) + "px",
-        color: "#ffffff",
+    title: function (scene, x, y, text, size) {
+      return label(scene, x, y, text, {
+        fontSize: (size || 32) + "px",
         fontStyle: "bold",
         align: "center",
-        wordWrap: { width: WIDTH - 120 }
+        wordWrap: { width: WIDTH - 60 }
       }).setOrigin(0.5);
     },
 
-    hint: function (scene, x, y, label) {
-      return scene.add.text(x, y, label, {
-        fontFamily: "system-ui, sans-serif", fontSize: "34px", color: "#9aa0b5",
-        align: "center", wordWrap: { width: WIDTH - 140 }
+    hint: function (scene, x, y, text) {
+      return label(scene, x, y, text, {
+        fontSize: "16px", color: "#9aa0b5",
+        align: "center", wordWrap: { width: WIDTH - 70 }
       }).setOrigin(0.5);
     },
 
     // Фон экрана: заглушка вместо оформления — подставляется картинкой кита.
     backdrop: function (scene) {
       scene.add.rectangle(WIDTH / 2, HEIGHT / 2, WIDTH, HEIGHT, 0x101018).setOrigin(0.5);
-    }
+    },
+
+    text: label
   };
 
   // --- подстановка картинок и анимаций ------------------------------------
@@ -89,25 +109,20 @@
   // Смысл: setTexture() и play() внутри зовут setSizeToFrame(), то есть
   // сбрасывают тело под размер нового кадра и обнуляют offset. Если тело
   // задать один раз в create, после подстановки настоящего спрайта герой
-  // «повисает» над полом или проваливается в него. Хелпер запоминает
-  // желаемое тело на спрайте и переприменяет его после каждой смены кадра.
+  // «повисает» над полом или проваливается. Хелпер запоминает желаемое тело
+  // на спрайте и переприменяет его после каждой смены кадра.
   var sprite = {
     // opts: { texture, frame, anim, bodyW, bodyH, offsetX, offsetY, scale }
     // Размеры тела — в единицах ТЕКСТУРЫ (масштаб Arcade учитывает сам).
+    // scale только целый: дробный рвёт пиксельную сетку внутри спрайта.
     // Якорь спрайта ставим по низу ног (0.5, 1): при смене картинки другого
     // размера точка опоры остаётся на земле, герой не уезжает вверх/вниз.
     apply: function (obj, opts) {
       opts = opts || {};
-      // Подстановка может прийти посреди твина сплющивания — снимаем его и
-      // возвращаем базовый масштаб, иначе за базу примется искажённый.
-      if (obj.zvSquash) { obj.zvSquash.remove(); obj.zvSquash = null; }
-      var baseX = obj.getData("zvScaleX"), baseY = obj.getData("zvScaleY");
-      if (typeof baseX === "number") obj.setScale(baseX, baseY);
-      if (typeof opts.scale === "number") obj.setScale(opts.scale);
+      if (typeof opts.scale === "number") obj.setScale(Math.max(1, Math.round(opts.scale)));
       if (opts.origin !== false) obj.setOrigin(0.5, 1);
-      // Базовый масштаб — точка отсчёта для «сока»: сплющивание временное.
-      obj.setData("zvScaleX", obj.scaleX);
-      obj.setData("zvScaleY", obj.scaleY);
+      // origin пересчитан — база сдвига картинки (shiftView) устарела.
+      obj.setData("zvOriginY", undefined);
 
       var spec = obj.getData("zvBody") || {};
       ["bodyW", "bodyH", "offsetX", "offsetY"].forEach(function (k) {
@@ -135,20 +150,16 @@
 
     // Возвращает телу размер и смещение, записанные в zvBody.
     // Смещение считаем от низа кадра: ноги должны совпадать с низом картинки.
-    // Размеры делим на текущий масштаб: Arcade множит их обратно, поэтому
-    // сплющивание в твине не должно менять хитбокс.
+    // Размеры в единицах текстуры — Arcade множит их на масштаб сам.
     refresh: function (obj) {
       var body = obj.body;
       var spec = obj.getData("zvBody");
       if (!body || !spec) return obj;
       var fw = obj.frame ? obj.frame.realWidth : obj.width;
       var fh = obj.frame ? obj.frame.realHeight : obj.height;
-      var base = { x: obj.getData("zvScaleX") || obj.scaleX, y: obj.getData("zvScaleY") || obj.scaleY };
-      var kx = (obj.scaleX || 1) / (base.x || 1);
-      var ky = (obj.scaleY || 1) / (base.y || 1);
-      var w = (spec.bodyW || fw) / (kx || 1);
-      var h = (spec.bodyH || fh) / (ky || 1);
-      var ox = typeof spec.offsetX === "number" ? spec.offsetX : (fw - w) / 2;
+      var w = spec.bodyW || fw;
+      var h = spec.bodyH || fh;
+      var ox = typeof spec.offsetX === "number" ? spec.offsetX : Math.round((fw - w) / 2);
       var oy = typeof spec.offsetY === "number" ? spec.offsetY : (fh - h);
       body.setSize(w, h, false);
       body.setOffset(ox, oy);
@@ -169,83 +180,140 @@
 
   // --- пол и «сок» ---------------------------------------------------------
   // Пол статическим телом БОЛЬШОЙ глубины: видно полоску, а тело уходит вниз.
-  // Расчёт: герой падает со скоростью до v = jump (≈1700 px/с). При просадке
-  // до 30 fps кадр длится 33 мс — тело проходит 1700/30 ≈ 57 px за кадр, при
-  // 10 fps уже 170 px. Полоса 28 px пробивается уже на 30 fps, поэтому тело
-  // делаем глубиной DEPTH = 400 px: даже без fixedStep запас четырёхкратный,
-  // а с ним (шаг всегда 1/60) фактический ход за тик ≈ 28 px.
-  var FLOOR_DEPTH = 400;
+  // Расчёт: герой падает со скоростью до v = jump (≈850 px/с). При просадке
+  // до 30 fps кадр длится 33 мс — тело проходит 850/30 ≈ 28 px за кадр, при
+  // 10 fps уже 85 px. Полоса 14 px пробивается уже на 30 fps, поэтому тело
+  // делаем глубиной DEPTH = 200 px: даже без fixedStep запас четырёхкратный,
+  // а с ним (шаг всегда 1/60) фактический ход за тик ≈ 14 px.
+  var FLOOR_DEPTH = 200;
+
+  // Чётное число не меньше min: нечётная ширина при origin 0.5 даёт полпикселя.
+  function even(v, min) {
+    return Math.max(min || 2, Math.round(v / 2) * 2);
+  }
+
+  // Сдвиг ТОЛЬКО картинки на целое число пикселей (плюс — вверх), физика
+  // остаётся на месте. Держим базовый displayOriginY, чтобы сдвиги не копились.
+  function shiftView(obj, dy) {
+    var base = obj.getData("zvOriginY");
+    if (typeof base !== "number") {
+      base = obj.displayOriginY;
+      obj.setData("zvOriginY", base);
+    }
+    obj.setDisplayOrigin(obj.displayOriginX, base + Math.round(dy));
+  }
+
+  // Кадр, на который надо вернуться после подмены: у играющей анимации его
+  // вернёт сама анимация, поэтому там null.
+  function restoreFrameOf(obj) {
+    if (obj.anims && obj.anims.isPlaying) return null;
+    return obj.frame ? obj.frame.name : null;
+  }
 
   function floor(scene, x, yTop, width, visibleH, color) {
-    var vis = typeof visibleH === "number" ? visibleH : 28;
-    scene.add.rectangle(x, yTop + vis / 2, width, vis,
-      typeof color === "number" ? color : 0x2a2f45).setOrigin(0.5);
+    var vis = typeof visibleH === "number" ? visibleH : 14;
+    // vis = 0: видимую часть рисует сам кит (тайлы дорожки), тело всё равно нужно.
+    if (vis > 0) {
+      scene.add.rectangle(x, yTop + vis / 2, width, vis,
+        typeof color === "number" ? color : 0x2a2f45).setOrigin(0.5);
+    }
     var body = scene.add.rectangle(x, yTop + FLOOR_DEPTH / 2, width, FLOOR_DEPTH, 0x000000, 0);
     scene.physics.add.existing(body, true);
     return body;
   }
 
-  // Приземление: сплющивание с возвратом, тень и пыль. Только твины и
-  // частицы Phaser, ничего внешнего.
+  // Приземление и взлёт: «сок» без дробного масштаба. Спрайт пиксель-арта
+  // нельзя ни сплющить твином, ни наклонить — вместо этого подменяем кадр
+  // (если кит его завёл) и двигаем спрайт на ЦЕЛОЕ число пикселей.
   var juice = {
-    // Сплющить и вернуть. По низу ног (origin 0.5,1) спрайт не «ныряет».
-    squash: function (scene, obj, power, ms) {
-      var p = typeof power === "number" ? power : 0.18;
-      var d = typeof ms === "number" ? ms : 80;
-      var sx = obj.getData("zvScaleX") || obj.scaleX;
-      var sy = obj.getData("zvScaleY") || obj.scaleY;
-      obj.setData("zvScaleX", sx);
-      obj.setData("zvScaleY", sy);
-      if (obj.zvSquash) obj.zvSquash.remove();
-      obj.setScale(sx * (1 + p), sy * (1 - p));
-      sprite.refresh(obj);
-      obj.zvSquash = scene.tweens.add({
-        targets: obj, scaleX: sx, scaleY: sy, duration: d, ease: "Quad.easeOut",
-        // Тело следует за масштабом весь твин, иначе хитбокс застревает
-        // в сплющенном состоянии.
-        onUpdate: function () { sprite.refresh(obj); },
-        onComplete: function () { sprite.refresh(obj); }
+    // Приземление: кадр «сплющен» на 2–3 тика плюс просадка картинки на 2 px.
+    // Кадра нет — остаётся одна просадка, она читается и без своей картинки.
+    // ВАЖНО: двигаем displayOriginY, а не obj.y. Сдвиг obj.y у тела, лежащего
+    // на полу, дерётся с коллайдером: тело снова падает на пол, обратный сдвиг
+    // поднимает его — герой зависает в воздухе и больше не «приземляется».
+    // displayOrigin меняет только отрисовку, физика его не видит.
+    squash: function (scene, obj, frame, ms) {
+      var d = typeof ms === "number" ? ms : 50;   // ~3 тика при 60 fps
+      if (obj.zvSquash) { obj.zvSquash.remove(); obj.zvSquash = null; }
+      var back = restoreFrameOf(obj);
+      if (typeof frame !== "undefined" && frame !== null) {
+        if (obj.anims) obj.anims.stop();
+        obj.setFrame(frame);
+        sprite.refresh(obj);
+      }
+      shiftView(obj, -2);   // картинка вниз на целое число пикселей
+      obj.zvSquash = scene.time.delayedCall(d, function () {
+        obj.zvSquash = null;
+        shiftView(obj, 0);
+        if (back !== null) { obj.setFrame(back); sprite.refresh(obj); }
       });
     },
 
-    // Растянуть в прыжке — обратная сторона того же приёма.
-    stretch: function (scene, obj, power, ms) {
-      juice.squash(scene, obj, -(typeof power === "number" ? power : 0.14), ms || 90);
+    // Подъём картинки на 2 px в момент отрыва — обратная сторона приёма.
+    stretch: function (scene, obj, frame, ms) {
+      var d = typeof ms === "number" ? ms : 50;
+      var back = restoreFrameOf(obj);
+      if (typeof frame !== "undefined" && frame !== null) {
+        if (obj.anims) obj.anims.stop();
+        obj.setFrame(frame);
+        sprite.refresh(obj);
+      }
+      shiftView(obj, 2);
+      scene.time.delayedCall(d, function () {
+        shiftView(obj, 0);
+        if (back !== null) { obj.setFrame(back); sprite.refresh(obj); }
+      });
     },
 
-    // Тень-овал: следует за ногами, сжимается, когда объект высоко.
-    // opts: { color, alpha } — на светлой дорожке нужен чёрный, на тёмной
-    // тень читается только светлым пятном.
+    // Тень отдельным спрайтом: три готовых кадра-размера вместо дробного
+    // масштаба. Чем выше объект, тем меньше кадр.
     shadow: function (scene, obj, groundY, maxW, opts) {
       opts = opts || {};
-      var w = maxW || 90;
-      var base = typeof opts.alpha === "number" ? opts.alpha : 0.3;
-      var sh = scene.add.ellipse(obj.x, groundY, w, w * 0.28,
-        typeof opts.color === "number" ? opts.color : 0x000000, base)
-        .setOrigin(0.5).setDepth((obj.depth || 0) - 1);
+      var w = maxW || 48;
+      var color = typeof opts.color === "number" ? opts.color : 0x000000;
+      var base = typeof opts.alpha === "number" ? opts.alpha : 0.35;
+      var key = "zv-shadow-" + w + "-" + color;
+      if (!scene.textures.exists(key)) {
+        // Лист из трёх кадров-размеров: 100 %, 70 %, 45 % ширины. Все числа
+        // чётные — спрайт с origin 0.5 садится ровно на пиксель.
+        var hs = even(w * 0.25, 2);
+        var widths = [even(w, 2), even(w * 0.7, 2), even(w * 0.45, 2)];
+        var heights = [hs, even(hs * 0.75, 2), even(hs * 0.5, 2)];
+        var g = scene.make.graphics({ x: 0, y: 0, add: false });
+        g.fillStyle(color, 1);
+        for (var i = 0; i < 3; i++) {
+          g.fillRect(i * w + (w - widths[i]) / 2, (hs - heights[i]) / 2, widths[i], heights[i]);
+        }
+        g.generateTexture(key, w * 3, hs);
+        g.destroy();
+        var tex = scene.textures.get(key);
+        for (var j = 0; j < 3; j++) tex.add(j, 0, j * w, 0, w, hs);
+      }
+      var sh = scene.add.sprite(Math.round(obj.x), Math.round(groundY), key, 0)
+        .setOrigin(0.5, 0.5).setAlpha(base).setDepth((obj.depth || 0) - 1);
       sh.zvFollow = function () {
-        var h = Phaser.Math.Clamp((groundY - obj.y) / 320, 0, 1);
-        sh.x = obj.x;
-        sh.setScale(1 - h * 0.45, 1 - h * 0.45);
-        sh.setAlpha(base * (1 - h * 0.6));
+        var h = Phaser.Math.Clamp((groundY - obj.y) / 160, 0, 1);
+        sh.x = Math.round(obj.x);
+        sh.setFrame(h > 0.66 ? 2 : (h > 0.28 ? 1 : 0));
+        sh.setAlpha(base * (1 - h * 0.5));
       };
       return sh;
     },
 
-    // Пара пылинок под ногами. Одноразовый эмиттер, сам себя убирает.
+    // Пара пылинок под ногами. Размер частицы целый, без дробного scale.
     dust: function (scene, x, y, color) {
       if (!scene.textures.exists("zv-dust")) {
         var g = scene.make.graphics({ x: 0, y: 0, add: false });
         g.fillStyle(0xffffff, 1);
-        g.fillCircle(6, 6, 6);
-        g.generateTexture("zv-dust", 12, 12);
+        g.fillRect(0, 0, 3, 3);
+        g.generateTexture("zv-dust", 3, 3);
         g.destroy();
       }
-      var em = scene.add.particles(x, y, "zv-dust", {
-        speed: { min: 60, max: 170 },
+      var em = scene.add.particles(Math.round(x), Math.round(y), "zv-dust", {
+        speed: { min: 30, max: 85 },
         angle: { min: 195, max: 345 },
-        gravityY: 900,
-        scale: { start: 0.7, end: 0 },
+        gravityY: 450,
+        scale: 1,                      // целый: пылинка остаётся квадратом 3×3
         alpha: { start: 0.55, end: 0 },
         lifespan: 320,
         tint: typeof color === "number" ? color : 0x9aa0b5,
@@ -268,25 +336,24 @@
     var self = this;
     ui.backdrop(this);
     if (brand.name) {
-      this.add.text(WIDTH / 2, 200, brand.name, {
-        fontFamily: "system-ui, sans-serif", fontSize: "38px", color: SECONDARY
-      }).setOrigin(0.5);
+      label(this, WIDTH / 2, 100, brand.name, { fontSize: "16px", color: SECONDARY })
+        .setOrigin(0.5);
     }
-    ui.title(this, WIDTH / 2, 380, config.title || "Игра", 76);
-    ui.hint(this, WIDTH / 2, 520, "Одно касание — одно действие");
+    ui.title(this, WIDTH / 2, 190, config.title || "Игра", 32);
+    ui.hint(this, WIDTH / 2, 260, "Одно касание — одно действие");
 
-    ui.button(this, WIDTH / 2, HEIGHT / 2 + 120, "Играть", function () {
+    ui.button(this, WIDTH / 2, HEIGHT / 2 + 60, "Играть", function () {
       unlockAudio(self);
       post("start");
       self.scene.start("zv-play");
     });
 
     if (!config.embed) {
-      ui.button(this, WIDTH / 2, HEIGHT - 220, "Во весь экран", function () {
+      ui.button(this, WIDTH / 2, HEIGHT - 110, "Во весь экран", function () {
         unlockAudio(self);
         if (self.scale.isFullscreen) self.scale.stopFullscreen();
         else self.scale.startFullscreen();
-      }, { width: 380, height: 100, color: "#2a2f45" });
+      }, { width: 224, height: 48, color: "#2a2f45", fontSize: "16px" });
     }
 
     post("ready");
@@ -305,19 +372,19 @@
     var self = this;
     var r = this.result || {};
     ui.backdrop(this);
-    ui.title(this, WIDTH / 2, 380, r.won ? "Победа" : "Раунд окончен", 68);
-    this.add.text(WIDTH / 2, 520, String(r.score || 0), {
-      fontFamily: "system-ui, sans-serif", fontSize: "140px", color: SECONDARY, fontStyle: "bold"
+    ui.title(this, WIDTH / 2, 190, r.won ? "Победа" : "Раунд окончен", 32);
+    label(this, WIDTH / 2, 260, String(r.score || 0), {
+      fontSize: "64px", color: SECONDARY, fontStyle: "bold"
     }).setOrigin(0.5);
-    ui.hint(this, WIDTH / 2, 640, r.text || "очков");
+    ui.hint(this, WIDTH / 2, 320, r.text || "очков");
 
-    ui.button(this, WIDTH / 2, HEIGHT / 2 + 220, "Ещё раз", function () {
+    ui.button(this, WIDTH / 2, HEIGHT / 2 + 110, "Ещё раз", function () {
       post("start");
       self.scene.start("zv-play");
     });
-    ui.button(this, WIDTH / 2, HEIGHT / 2 + 380, "В меню", function () {
+    ui.button(this, WIDTH / 2, HEIGHT / 2 + 190, "В меню", function () {
       self.scene.start("zv-menu");
-    }, { width: 380, height: 100, color: "#2a2f45" });
+    }, { width: 192, height: 48, color: "#2a2f45" });
   };
 
   // --- сборка игры -------------------------------------------------------
@@ -331,7 +398,20 @@
       width: WIDTH,
       height: HEIGHT,
       backgroundColor: "#101018",
-      scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
+      // pixelArt: ближайший сосед внутри канвы. Мыло на финальном апскейле
+      // снимает только image-rendering: pixelated в style.css — без него
+      // все эти флаги ничего не дают.
+      render: {
+        pixelArt: true,
+        roundPixels: true,
+        antialias: false,
+        powerPreference: "low-power"   // промо-игра, батарея телефона важнее
+      },
+      scale: {
+        mode: Phaser.Scale.FIT,
+        autoCenter: Phaser.Scale.CENTER_BOTH,
+        autoRound: true                // размер канвы целыми пикселями
+      },
       // fixedStep: физический шаг всегда 1/60 с, даже когда кадры проседают.
       // Без него на слабом телефоне шаг равен длине кадра, и быстрое тело
       // пролетает сквозь пол за один тик (туннелирование).
@@ -364,6 +444,8 @@
     HEIGHT: HEIGHT,
     PRIMARY: PRIMARY,
     SECONDARY: SECONDARY,
+    FONT: FONT,
+    TEXT_RES: TEXT_RES,
     ui: ui,
     sprite: sprite,
     juice: juice,

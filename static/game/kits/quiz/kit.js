@@ -1,5 +1,6 @@
 // Кит «Викторина»: вопрос и четыре ответа, на каждый вопрос таймер.
 // Чем дальше, тем меньше времени. Ассетов не требует — только текст.
+// Канва 360×640; текст — через ZV.ui.text (пиксельный шрифт и resolution).
 (function (global) {
   "use strict";
 
@@ -36,19 +37,20 @@
     this.over = false;
     this.order = shuffle(QUESTIONS.slice());
 
-    this.scoreText = this.add.text(40, 110, "0", {
-      fontFamily: "system-ui, sans-serif", fontSize: "64px", color: "#ffffff", fontStyle: "bold"
+    var ZV = global.ZV;
+    this.scoreText = ZV.ui.text(this, 20, 55, "0", {
+      fontSize: "32px", fontStyle: "bold"
     }).setOrigin(0, 0.5).setDepth(5);
-    this.timeText = this.add.text(W - 40, 110, "", {
-      fontFamily: "system-ui, sans-serif", fontSize: "56px", color: global.ZV.SECONDARY
+    this.timeText = ZV.ui.text(this, W - 20, 55, "", {
+      fontSize: "24px", color: ZV.SECONDARY
     }).setOrigin(1, 0.5).setDepth(5);
-    this.progressText = this.add.text(W / 2, 110, "", {
-      fontFamily: "system-ui, sans-serif", fontSize: "36px", color: "#9aa0b5"
+    this.progressText = ZV.ui.text(this, W / 2, 55, "", {
+      fontSize: "16px", color: "#9aa0b5"
     }).setOrigin(0.5).setDepth(5);
 
-    this.questionText = this.add.text(W / 2, 340, "", {
-      fontFamily: "system-ui, sans-serif", fontSize: "52px", color: "#ffffff",
-      align: "center", wordWrap: { width: W - 120 }
+    this.questionText = ZV.ui.text(this, W / 2, 170, "", {
+      fontSize: "24px",
+      align: "center", wordWrap: { width: W - 60 }
     }).setOrigin(0.5);
 
     this.buttons = [];
@@ -68,13 +70,14 @@
 
   function makeAnswer(scene, i) {
     var W = global.ZV.WIDTH;
-    var y = 620 + i * 150;
-    var box = scene.add.rectangle(W / 2, y, W - 120, 128, 0x2a2f45)
+    // Шаг 75 при высоте кнопки 64: тач-цель заведомо больше 24 логических px.
+    var y = 310 + i * 75;
+    var box = scene.add.rectangle(W / 2, y, W - 60, 64, 0x2a2f45)
       .setOrigin(0.5).setInteractive({ useHandCursor: true });
-    box.setStrokeStyle(4, 0xffffff, 0.12);
-    var text = scene.add.text(W / 2, y, "", {
-      fontFamily: "system-ui, sans-serif", fontSize: "40px", color: "#ffffff",
-      align: "center", wordWrap: { width: W - 180 }
+    box.setStrokeStyle(2, 0xffffff, 0.12);
+    var text = global.ZV.ui.text(scene, W / 2, y, "", {
+      fontSize: "18px",
+      align: "center", wordWrap: { width: W - 90 }
     }).setOrigin(0.5);
     box.on("pointerup", function () { answer(scene, i); });
     return { box: box, text: text };
