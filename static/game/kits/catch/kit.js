@@ -184,47 +184,21 @@
     });
   }
 
-  // Фон подгоняется под канву: картинка крупнее канвы раньше рисовалась 1:1
-  // и показывала только центральный кусок.
-  //   tile:true + POT          — tileSprite;
-  //   кратно крупнее (720/360) — масштаб 1/n;
-  //   кратно мельче            — целый апскейл ×n;
-  //   иначе                    — cover через setDisplaySize.
+  // Фон подгоняется под канву по общему правилу layout.js (fitBackground):
+  // раньше картинка крупнее канвы показывала только центральный кусок.
   function drawBackground(scene, W, H) {
     if (!scene.textures.exists("bg") || scene.bgFailed) return false;
     var src = scene.textures.get("bg").getSourceImage();
-    var sw = src.width, sh = src.height;
-    if (!sw || !sh) return false;
-
-    if (scene.bgTile && isPOT(sw) && isPOT(sh)) {
+    var fit = global.ZV_LAYOUT.fitBackground(src.width, src.height, W, H, scene.bgTile);
+    if (!fit) return false;
+    if (fit.mode === "tile") {
       scene.add.tileSprite(0, 0, W, H, "bg").setOrigin(0, 0).setDepth(-10);
       return true;
     }
-
     var img = scene.add.image(W / 2, H / 2, "bg").setDepth(-10);
-    var down = fitDivisor(sw, sh, W, H);
-    if (down > 1) {
-      img.setScale(1 / down);
-    } else {
-      var up = Math.floor(Math.min(W / sw, H / sh));
-      if (up >= 1) img.setScale(up);
-      else {
-        var cover = Math.max(W / sw, H / sh);
-        img.setDisplaySize(Math.ceil(sw * cover), Math.ceil(sh * cover));
-      }
-    }
+    if (fit.mode === "cover") img.setDisplaySize(fit.width, fit.height);
+    else img.setScale(fit.scale);
     return true;
-  }
-
-  // Общий целый делитель: картинка ровно в n раз больше канвы по обеим сторонам.
-  function fitDivisor(sw, sh, W, H) {
-    if (sw % W || sh % H) return 0;
-    var n = sw / W;
-    return n === sh / H && n >= 1 ? n : 0;
-  }
-
-  function isPOT(v) {
-    return v > 0 && (v & (v - 1)) === 0;
   }
 
   function loadOrStub(scene, key, item, w, h, color) {

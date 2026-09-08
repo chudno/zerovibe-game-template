@@ -72,7 +72,7 @@
   PlayScene.prototype.create = function () {
     var self = this;
     var W = global.ZV.WIDTH, H = global.ZV.HEIGHT;
-    var ZV = global.ZV;
+    var ZV = global.ZV, ZV_LAYOUT = global.ZV_LAYOUT;
 
     this.score = 0;
     this.lives = S.lives;
@@ -122,10 +122,9 @@
     // Высоту не трогаем — от неё зависит, что ноги стоят на земле.
     if (!heroCfg.bodyW) {
       var hb = this.hero.body;
-      var narrow = Math.max(8, Math.round(hb.width * 0.7));
-      var inset = Math.round((hb.width - narrow) / 2);
-      hb.setSize(narrow, hb.height, false);
-      hb.setOffset(hb.offset.x + inset, hb.offset.y);
+      var nb = ZV_LAYOUT.narrowBody(hb.width, hb.offset.x);
+      hb.setSize(nb.width, hb.height, false);
+      hb.setOffset(nb.offsetX, hb.offset.y);
     }
     this.hero.body.setGravityY(S.gravity);
     this.hero.setCollideWorldBounds(true);
@@ -203,7 +202,7 @@
   // Темп ног привязан к скорости мира; анимацию не пересоздаём, крутим timeScale.
   function updateAnim(scene) {
     var flying = scene.airborne;
-    global.ZV.sprite.playAnim(scene.hero, flying ? "jump" : "run", true);
+    global.ZV.sprite.playAnim(scene.hero, global.ZV_LAYOUT.runnerAnim(flying), true);
     if (!flying && scene.hero.anims) {
       scene.hero.anims.timeScale = Phaser.Math.Clamp(scene.speed / S.speedStart, 0.6, 2);
     }
@@ -248,57 +247,38 @@
     });
   }
 
-  // Фон подгоняется под канву, а не рисуется 1:1: картинка крупнее канвы
-  // раньше показывала только центральный кусок.
-  //   tile:true + POT           — tileSprite (бесшовный параллакс);
-  //   кратно крупнее (720/360)  — масштаб 1/n, ровное прореживание пикселей;
-  //   кратно мельче             — целый апскейл ×n;
-  //   иначе                     — cover через setDisplaySize.
+  // Фон подгоняется под канву, а не рисуется 1:1 (картинка крупнее канвы
+  // раньше показывала только центральный кусок). Правило — в layout.js
+  // (fitBackground), оно покрыто тестами на размерах настоящих фонов.
   // Возвращает true, если фон нарисован: тогда кит не кладёт поверх заглушки
   // неба и земли, которые перекрывали настоящую картинку.
   function drawBackground(scene, W, H) {
     if (!scene.textures.exists("bg") || scene.bgFailed) return false;
     var src = scene.textures.get("bg").getSourceImage();
-    var sw = src.width, sh = src.height;
-    if (!sw || !sh) return false;
+    var fit = global.ZV_LAYOUT.fitBackground(src.width, src.height, W, H, scene.bgTile);
+    if (!fit) return false;
 
-    if (scene.bgTile && isPOT(sw) && isPOT(sh)) {
+    if (fit.mode === "tile") {
       scene.bgFar = scene.add.tileSprite(0, 0, W, H, "bg").setOrigin(0, 0).setDepth(-10);
       scene.bgFarX = 0;
       return true;
     }
-
     var img = scene.add.image(W / 2, H / 2, "bg").setDepth(-10);
-    var down = fitDivisor(sw, sh, W, H);
-    if (down > 1) {
-      img.setScale(1 / down);                       // 720×1280 → ровно 360×640
-    } else {
-      var up = Math.floor(Math.min(W / sw, H / sh));
-      if (up >= 1) img.setScale(up);                // целый апскейл мелкой картинки
-      else img.setDisplaySize(coverW(sw, sh, W, H), coverH(sw, sh, W, H));
-    }
+    if (fit.mode === "cover") img.setDisplaySize(fit.width, fit.height);
+    else img.setScale(fit.scale);
     return true;
-  }
-
-  // Общий целый делитель: картинка ровно в n раз больше канвы по обеим сторонам.
-  function fitDivisor(sw, sh, W, H) {
-    if (sw % W || sh % H) return 0;
-    var n = sw / W;
-    return n === sh / H && n >= 1 ? n : 0;
-  }
-
-  // cover: заполнить канву целиком, лишнее уходит за край.
-  function coverScale(sw, sh, W, H) { return Math.max(W / sw, H / sh); }
-  function coverW(sw, sh, W, H) { return Math.ceil(sw * coverScale(sw, sh, W, H)); }
-  function coverH(sw, sh, W, H) { return Math.ceil(sh * coverScale(sw, sh, W, H)); }
-
-  function isPOT(v) {
-    return v > 0 && (v & (v - 1)) === 0;
   }
 
   // Анимации есть с самого начала: агенту остаётся заменить кадры, а не
   // изобретать анимацию. Ключи run/jump/idle менять не нужно.
   function makeAnims(scene) {
+    // Кадров — не больше, чем есть в листе: конфиг мог насчитать лишних, и
+    // Phaser показывал бы пустые кадры.
+    var tex = scene.textures.get("hero");
+    var src = tex && tex.getSourceImage ? tex.getSourceImage() : null;
+    var f0 = tex && tex.get ? tex.get(0) : null;
+    var grid = (src && f0) ? global.ZV_LAYOUT.sheetGrid(src.width, src.height, f0.width, f0.height) : null;
+    scene.heroFrames = global.ZV_LAYOUT.animFrames(scene.heroFrames, grid);
     var last = Math.max(0, scene.heroFrames - 1);
     if (!scene.anims.exists("run")) {
       scene.anims.create({

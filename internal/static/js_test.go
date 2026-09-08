@@ -53,3 +53,17 @@ func TestConfigArchetypeExists(t *testing.T) {
 		t.Fatalf("кит %q не найден: %v", m[1], err)
 	}
 }
+
+// Геометрия китов (layout.js) — юнит-тесты на node:test с размерами
+// настоящих сгенерированных картинок. Без node — пропуск, как и синтаксис.
+func TestJSLayoutUnit(t *testing.T) {
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("node не найден — тесты layout.js гоняются в среде с node")
+	}
+	cmd := exec.Command(node, "--test", filepath.Join("..", "..", "static", "game"))
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("node --test: %v\n%s", err, out)
+	}
+}

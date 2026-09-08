@@ -1,0 +1,9 @@
+{
+  "_": "Настоящие картинки из платформы (Retro Diffusion через asset_generate, проект-образец «курьер», 7 сент 2026). Числа — из ответа генерации; тесты layout.js и assets_test.go читают их отсюда, чтобы не разъезжаться.",
+  "canvas": { "width": 360, "height": 640 },
+  "hero": { "file": "hero_walk.png", "width": 384, "height": 192, "frame_width": 96, "frame_height": 96, "cols": 4, "rows": 2, "frames": 8 },
+  "items": [
+    { "file": "cone.png", "width": 32, "height": 32 },
+    { "file": "house_a.png", "width": 64, "height": 64 }
+  ]
+}

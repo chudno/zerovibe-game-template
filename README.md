@@ -28,6 +28,8 @@ internal/ycf/           адаптер события функции ↔ net/htt
 internal/static/        раздача: тип по расширению, кэш, 404
 static/index.html       оболочка страницы
 static/game/config.js   НАСТРОЙКИ ИГРЫ: название, архетип, бренд, картинки
+static/game/layout.js   геометрия китов без Phaser: подгонка фона, сетка кадров
+                        листа, выбор анимации — с тестами на настоящих картинках
 static/game/shell.js    экраны, мобильный контур, события встраивания
 static/game/main.js     выбор кита по archetype
 static/game/kits/*/     киты архетипов: runner, catch, quiz (+ README)
