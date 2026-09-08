@@ -12,7 +12,7 @@ const assert = require("node:assert/strict");
 const L = require("./layout.js");
 // Размеры настоящих картинок — из манифеста фикстур (те же файлы проверяет
 // assets_test.go на Go): числа в двух тестах не разъезжаются.
-const M = require("../../internal/static/testdata/assets/manifest.json");
+const M = require("../tests/fixtures/manifest.json");
 
 const W = M.canvas.width, H = M.canvas.height;
 
