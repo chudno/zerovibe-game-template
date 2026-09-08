@@ -146,7 +146,7 @@
     });
 
     this.scoreText = ZV.ui.text(this, W / 2, 60, "0", {
-      fontSize: "40px", fontStyle: "bold"
+      size: 3
     }).setOrigin(0.5).setDepth(5);
     ZV.ui.hint(this, W / 2, 110, "Тап — прыжок");
 

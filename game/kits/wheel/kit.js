@@ -85,7 +85,7 @@
       g.strokePath();
       var mid = (a0 + a1) / 2;
       ZV.ui.text(scene, Math.round(cx + Math.cos(mid) * r * 0.64), Math.round(cy + Math.sin(mid) * r * 0.64), it.title, {
-        fontSize: n > 8 ? "11px" : "13px", fontStyle: "bold", align: "center",
+        size: 1, align: "center",
         wordWrap: { width: n > 8 ? 56 : 76 }
       }).setOrigin(0.5).setDepth(2);
     });
@@ -166,11 +166,11 @@
     // Подложка с призом.
     scene.add.rectangle(W / 2, y0 + ch / 2, cw, ch, 0x1b1f33).setStrokeStyle(2, 0xffffff, 0.18);
     ZV.ui.text(scene, W / 2, y0 + 62, prize.title, {
-      fontSize: "22px", fontStyle: "bold", align: "center", wordWrap: { width: cw - 30 }
+      size: 2, align: "center", wordWrap: { width: cw - 30 }
     }).setOrigin(0.5);
     if (prize.code) {
       ZV.ui.text(scene, W / 2, y0 + 112, prize.code, {
-        fontSize: "24px", fontStyle: "bold", color: ZV.SECONDARY
+        size: 2, color: ZV.SECONDARY
       }).setOrigin(0.5);
     }
 
@@ -183,7 +183,7 @@
     var rt = scene.add.renderTexture(x0, y0, cw, ch).setOrigin(0, 0).setDepth(3);
     rt.fill(0x6b7390, 1);
     scene.cover = rt;
-    var hint = ZV.ui.text(scene, W / 2, y0 + ch / 2, "потри здесь", { fontSize: "16px", color: "#101018" })
+    var hint = ZV.ui.text(scene, W / 2, y0 + ch / 2, "потри здесь", { size: 1, color: "#101018" })
       .setOrigin(0.5).setDepth(4);
 
     var cols = cw / 20, rows = ch / 20, cells = {}, touched = 0;
@@ -244,7 +244,7 @@
           box.x = bx;
           box.setTexture("boxOpen");
           var t = global.ZV.ui.text(scene, bx, by - 40, prize.title, {
-            fontSize: "22px", fontStyle: "bold", color: global.ZV.SECONDARY, align: "center", wordWrap: { width: 260 }
+            size: 2, color: global.ZV.SECONDARY, align: "center", wordWrap: { width: 260 }
           }).setOrigin(0.5).setDepth(1).setAlpha(0);
           scene.tweens.add({
             targets: t, y: by - 160, alpha: 1, duration: 600, ease: "Back.easeOut",

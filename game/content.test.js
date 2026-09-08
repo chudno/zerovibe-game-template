@@ -20,11 +20,19 @@ test("каждый content/*.json проходит валидатор своег
   }
 });
 
-test("quiz: длина, число вариантов, индекс верного, повторы", () => {
+test("quiz: длина по метрикам шрифта, число вариантов, индекс верного, повторы", () => {
   const ok = { questions: [{ q: "В?", answers: ["а", "б"], correct: 1 }] };
   assert.deepEqual(C.validate("quiz", ok), []);
   assert.ok(C.validate("quiz", {}).length);
-  assert.ok(C.validate("quiz", { questions: [{ q: "x".repeat(91), answers: ["а", "б"], correct: 0 }] })[0].includes("q"));
+  // Вопрос: 4 строки по 300 px при кегле 2 (~18 знаков в строке) — 5 длинных слов не влезают.
+  const long = Array(5).fill("тринадцатьбукв").join(" ");
+  assert.ok(C.validate("quiz", { questions: [{ q: long, answers: ["а", "б"], correct: 0 }] })[0].includes("не влезает"));
+  // Ответ: 2 строки в кнопке; при кегле 1 это ~33 знака в строке — 70 знаков не влезают.
+  assert.ok(C.validate("quiz", { questions: [{ q: "В?", answers: ["слово ".repeat(12).trim(), "б"], correct: 0 }] })[0].includes("не влезает"));
+  // Символ без глифа после замен — ошибка с подсказкой.
+  assert.ok(C.validate("quiz", { questions: [{ q: "Что тут ☃?", answers: ["а", "б"], correct: 0 }] })[0].includes("нет таких символов"));
+  // Многоточие и рубль заменяются, это не ошибка.
+  assert.deepEqual(C.validate("quiz", { questions: [{ q: "Цена… 100 ₽?", answers: ["а", "б"], correct: 0 }] }), []);
   assert.ok(C.validate("quiz", { questions: [{ q: "В?", answers: ["а"], correct: 0 }] })[0].includes("от 2 до 4"));
   assert.ok(C.validate("quiz", { questions: [{ q: "В?", answers: ["а", "б"], correct: 2 }] })[0].includes("correct"));
   assert.ok(C.validate("quiz", { questions: [{ q: "В?", answers: ["а", "а"], correct: 0 }] })[0].includes("повторяются"));
@@ -58,7 +66,9 @@ test("wheel: сумма весов, минимум два ненулевых, id
   assert.ok(C.validate("wheel", { items: [{ id: "a", title: "А", weight: 1 }, { id: "b", title: "Б", weight: 0 }] })
     .some((e) => e.includes("меньше двух")));
   assert.ok(C.validate("wheel", { items: [{ id: "A B", title: "А", weight: 1 }, { id: "b", title: "Б", weight: 1, color: "red" }] }).length === 2);
-  assert.ok(C.validate("wheel", { items: [{ id: "a", title: "x".repeat(25), weight: 1 }, { id: "b", title: "Б", weight: 1 }] })[0].includes("title"));
+  // Сектор 76 px, 2 строки кеглем 1: «Скидка 10%» влезает («Скидка» / «10%»), одно слово из 12 букв — нет.
+  assert.deepEqual(C.validate("wheel", { items: [{ id: "a", title: "Скидка 10%", weight: 1 }, { id: "b", title: "Б", weight: 1 }] }), []);
+  assert.ok(C.validate("wheel", { items: [{ id: "a", title: "Двенадцатьбу", weight: 1 }, { id: "b", title: "Б", weight: 1 }] })[0].includes("не влезает"));
 });
 
 test("приз: пустой — это «нет приза», битый — ошибка", () => {
@@ -67,7 +77,9 @@ test("приз: пустой — это «нет приза», битый — о
   assert.equal(C.hasPrize({ title: "Скидка" }), true);
   assert.deepEqual(C.validatePrize({ title: "Скидка", code: "X1", url: "https://brand.ru/promo" }), []);
   assert.ok(C.validatePrize({ title: "Скидка", url: "brand.ru" })[0].includes("url"));
-  assert.ok(C.validatePrize({ title: "Скидка", code: "x".repeat(33) })[0].includes("code"));
+  // Код — одна строка в рамке 200 px: кеглем 2 это 12 знаков, кеглем 1 — 25.
+  assert.deepEqual(C.validatePrize({ title: "Скидка", code: "PROMO2026" }), []);
+  assert.ok(C.validatePrize({ title: "Скидка", code: "X".repeat(26) })[0].includes("code"));
   assert.ok(C.validate("nope", {})[0].includes("неизвестный вид"));
 });
 

@@ -12,6 +12,8 @@ game/style.css               стили вокруг канвы (image-rendering
 game/config.js               window.ZV_GAME — настройка: params, prize, картинки
 content/<kit>.json           тексты и призы китов (quiz, persona, wheel)
 game/shell.js                window.ZV: экраны, ui/sprite/juice/floor/prizes
+game/fontdata.js + font.js   пиксельный шрифт: растр (генерируется) и метрики
+game/pixelfont.js            атлас шрифта → BitmapText
 game/random.js               ZV.random — случайность с сидом (?seed=)
 game/content.js              слияние params и проверка content/*.json
 game/balance.js              физика раннера числами (окно прыжка, реакция)
@@ -65,8 +67,12 @@ game/kits/<a>/               kit.js + README.md — механика архет�
    обычный `add.image` с целым масштабом.
 6. **`tilePositionX/Y` — через `Math.floor`**, дробь копи в своём поле, иначе
    текстура ползёт на полпикселя и мерцает.
-7. **Текст — только `ZV.ui.text` / `ui.title` / `ui.hint`**: там моноширинный
-   шрифт, `resolution` под экран и целые координаты. Свой `add.text` даст мыло.
+7. **Текст — только `ZV.ui.text` / `ui.title` / `ui.hint` / `ui.choices`**:
+   пиксельный шрифт спрайтами из атласа, целые координаты. Кегль — `size: k`
+   (10·k px: 1 подписи, 2 кнопки и вопросы, 3–4 счёт), **дробных кеглей и
+   `fontStyle: "bold"` нет**. Свой `add.text`/`add.bitmapText` даст мыло или
+   чужой шрифт. Влезет ли строка — `ZV.font.fit(text, width, lines, kMax)`;
+   `…` и `₽` оболочка заменяет сама, экзотику валидатор отвергает.
 8. **Тени и пыль — спрайтами/частицами целых размеров** (`ZV.juice.shadow`,
    `ZV.juice.dust`), не растянутым овалом.
 9. Мыло на финальном апскейле снимает `image-rendering: pixelated` в
@@ -89,9 +95,9 @@ global.ZV.finish(scene, { score: 12, won: true, meta: {}, text: "препятс�
 // outcome (исход словом: тип, id приза), replay: false (без «Ещё раз»)
 ```
 
-Киту доступно: `WIDTH`/`HEIGHT`, `PRIMARY`/`SECONDARY`, `FONT`,
-`ui.button/title/hint/backdrop/text`, `ui.choices` (столбик кнопок-вариантов
-с `set/color/centerOf`), `ui.fail`, `sprite.apply/playAnim`,
+Киту доступно: `WIDTH`/`HEIGHT`, `PRIMARY`/`SECONDARY`, `font`
+(width/wrap/fit/sanitize), `ui.button/title/hint/backdrop/text`, `ui.choices`
+(столбик кнопок-вариантов с `set/color/centerOf`), `ui.fail`, `sprite.apply/playAnim`,
 `juice.squash/stretch/shadow/dust`, `floor`, `FLOOR_DEPTH`, `random`,
 `params`, `loadContent/content`, `prizes`. Новый кит — добавь `<script>` в
 `index.html` и имя архетипа в комментарий `config.js`, иначе тест не пропустит.

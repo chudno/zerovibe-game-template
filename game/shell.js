@@ -10,12 +10,11 @@
   var WIDTH = 360;
   var HEIGHT = 640;
 
-  // Пиксельный шрифт: моноширинные системные — единственные, что не мылят
-  // мелкий кегль. Внешних шрифтов в игре нет (White Label, вес страницы).
-  var FONT = '"Courier New", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
-  // Экранных пикселей на логический: без него текст в 2 раза меньше нужного
-  // растеризуется и мылится на апскейле.
-  var TEXT_RES = Math.min(global.devicePixelRatio || 1, 3);
+  // Пиксельный шрифт (Pixel Cyr) рисуется спрайтами из атласа game/fontdata.js
+  // (BitmapText), не canvas-текстом: тот мылит края на любом кегле и требует
+  // ждать загрузки. Кегль — целый множитель k: 10·k px (капитель 10 px при k=1).
+  var F = global.ZV_FONT;
+  var FONT_KEY = global.ZV_PIXELFONT.KEY;
 
   var config = global.ZV_GAME || {};
   var brand = config.brand || {};
@@ -80,15 +79,36 @@
     }
   }
 
-  // Текст пиксель-арта: целые координаты и своя растеризация под экран.
+  // Кегль из стиля: size — множитель k (1..6). Старая запись fontSize: "24px"
+  // тоже понимается и округляется к ближайшему целому кеглю.
+  function sizeK(style) {
+    if (typeof style.size === "number") return Phaser.Math.Clamp(Math.round(style.size), 1, 6);
+    var px = parseInt(style.fontSize, 10);
+    if (!px) return 1;
+    return px <= 17 ? 1 : (px <= 26 ? 2 : (px <= 44 ? 3 : 4));
+  }
+
+  // Текст пиксель-арта: BitmapText из атласа, целые координаты, целый кегль.
+  // Стиль: size (k), color, align ("center"|"right"), wordWrap.width, lineSpacing.
+  // fontStyle игнорируется: синтетический жирный размазал бы пиксели.
   function label(scene, x, y, text, style) {
-    var s = { fontFamily: FONT, fontSize: "16px", color: "#ffffff", resolution: TEXT_RES };
-    if (style) {
-      for (var k in style) {
-        if (Object.prototype.hasOwnProperty.call(style, k)) s[k] = style[k];
-      }
-    }
-    return scene.add.text(Math.round(x), Math.round(y), text, s);
+    style = style || {};
+    var k = sizeK(style);
+    var t = scene.add.bitmapText(Math.round(x), Math.round(y), FONT_KEY, F.sanitize(text), F.UNIT * k);
+    var origSetText = t.setText;
+    t.setText = function (v) { return origSetText.call(t, F.sanitize(v)); };
+    t.zvK = k;
+    if (style.color) t.setTint(Phaser.Display.Color.HexStringToColor(style.color).color);
+    if (style.align === "center") t.setCenterAlign();
+    else if (style.align === "right") t.setRightAlign();
+    if (style.wordWrap && style.wordWrap.width) t.setMaxWidth(style.wordWrap.width);
+    if (typeof style.lineSpacing === "number") t.setLineSpacing(style.lineSpacing);
+    return t;
+  }
+
+  // Кегль, при котором текст влезает в ширину за maxLines строк (не ниже 1).
+  function fitK(text, maxWidth, maxLines, kMax) {
+    return F.fit(text, maxWidth, maxLines, kMax) || 1;
   }
 
   // --- общие элементы интерфейса ----------------------------------------
@@ -103,7 +123,8 @@
         Phaser.Display.Color.HexStringToColor(color).color)
         .setOrigin(0.5).setInteractive({ useHandCursor: true });
       box.setStrokeStyle(2, 0xffffff, 0.18);
-      var t = label(scene, x, y, text, { fontSize: opts.fontSize || "24px", fontStyle: "bold" }).setOrigin(0.5);
+      // Кегль 2, а если подпись не влезает в кнопку — 1.
+      var t = label(scene, x, y, text, { size: opts.size || fitK(text, w - 16, 1, 2) }).setOrigin(0.5);
       // Тап засчитываем по pointerup — это ближе к ожиданиям на телефоне.
       box.on("pointerdown", function () { box.setAlpha(0.75); });
       box.on("pointerout", function () { box.setAlpha(1); });
@@ -114,10 +135,11 @@
       return { box: box, text: t };
     },
 
+    // Заголовок: кегль 3 (size ≥ 30) или 2, ужимается до 2 строк.
     title: function (scene, x, y, text, size) {
+      var kMax = (size || 32) >= 30 ? 3 : 2;
       return label(scene, x, y, text, {
-        fontSize: (size || 32) + "px",
-        fontStyle: "bold",
+        size: fitK(text, WIDTH - 60, 2, kMax),
         align: "center",
         wordWrap: { width: WIDTH - 60 }
       }).setOrigin(0.5);
@@ -125,7 +147,7 @@
 
     hint: function (scene, x, y, text) {
       return label(scene, x, y, text, {
-        fontSize: "16px", color: "#9aa0b5",
+        size: 1, color: "#9aa0b5",
         align: "center", wordWrap: { width: WIDTH - 70 }
       }).setOrigin(0.5);
     },
@@ -138,7 +160,7 @@
     // Столбик кнопок-вариантов (ответы квиза, реплики новеллы). Кнопки
     // создаются один раз и перезаполняются set(): текст поверх текста и утечки
     // при пересоздании — типовая ошибка. Тач-цель 64 px при шаге 75.
-    // opts: { y, step, height, width, max, fontSize, onPick(i) }.
+    // opts: { y, step, height, width, max, onPick(i) }. Кегль подбирается в set().
     choices: function (scene, opts) {
       opts = opts || {};
       var y0 = opts.y || 310, step = opts.step || 75;
@@ -152,7 +174,7 @@
           .setOrigin(0.5).setInteractive({ useHandCursor: true });
         box.setStrokeStyle(2, 0xffffff, 0.12);
         var text = label(scene, WIDTH / 2, y, "", {
-          fontSize: opts.fontSize || "18px", align: "center", wordWrap: { width: w - 30 }
+          size: 2, align: "center", wordWrap: { width: w - 30 }
         }).setOrigin(0.5);
         box.on("pointerup", function () {
           if (ctl.enabled && box.visible && opts.onPick) opts.onPick(i);
@@ -161,9 +183,13 @@
       }
       for (var i = 0; i < max; i++) ctl.items.push(make(i));
       // Подставить подписи: лишние кнопки прячутся, цвета сбрасываются.
+      // Кегль общий: 2, а если хоть одна подпись не влезает в 2 строки — 1.
       ctl.set = function (labels) {
+        var k = 2;
+        (labels || []).forEach(function (l) { if (l && !F.fits(String(l), w - 30, 2, 2)) k = 1; });
         for (var i = 0; i < ctl.items.length; i++) {
           var it = ctl.items[i], on = !!(labels && labels[i]);
+          it.text.setFontSize(F.UNIT * k);
           it.text.setText(on ? String(labels[i]) : "");
           it.box.setFillStyle(IDLE);
           it.box.setVisible(on);
@@ -189,11 +215,11 @@
     fail: function (scene, title, lines) {
       ui.backdrop(scene);
       label(scene, WIDTH / 2, 80, title || "Ошибка в данных игры", {
-        fontSize: "20px", fontStyle: "bold", color: "#ff5f6d", align: "center", wordWrap: { width: WIDTH - 40 }
+        size: 2, color: "#ff5f6d", align: "center", wordWrap: { width: WIDTH - 40 }
       }).setOrigin(0.5);
       var list = (lines || []).slice(0, 8);
-      label(scene, 20, 130, list.map(function (l) { return "• " + l; }).join("\n"), {
-        fontSize: "14px", color: "#e6e8f0", wordWrap: { width: WIDTH - 40 }, lineSpacing: 6
+      label(scene, 20, 130, list.map(function (l) { return "- " + l; }).join("\n"), {
+        size: 1, color: "#e6e8f0", wordWrap: { width: WIDTH - 40 }, lineSpacing: 6
       });
       if (global.console && global.console.error) global.console.error((title || "content error") + ": " + list.join(" | "));
       post("error", { message: title || "content error", details: list });
@@ -546,20 +572,20 @@
       var box = scene.add.rectangle(WIDTH / 2, y, w, 10, 0x1b1f33).setOrigin(0.5, 0);
       box.setStrokeStyle(2, Phaser.Display.Color.HexStringToColor(SECONDARY).color, 0.6);
       var title = label(scene, WIDTH / 2, cy, prize.title, {
-        fontSize: "18px", fontStyle: "bold", align: "center", wordWrap: { width: w - 2 * pad }
+        size: fitK(prize.title, w - 2 * pad, 2, 2), align: "center", wordWrap: { width: w - 2 * pad }
       }).setOrigin(0.5, 0);
       cy += title.height + 10;
       if (prize.code) {
         var codeBox = scene.add.rectangle(WIDTH / 2, cy, 216, 44, 0x101018).setOrigin(0.5, 0);
         codeBox.setStrokeStyle(2, 0xffffff, 0.12);
         label(scene, WIDTH / 2, cy + 22, prize.code, {
-          fontSize: "24px", fontStyle: "bold", color: SECONDARY
+          size: fitK(prize.code, 200, 1, 2), color: SECONDARY
         }).setOrigin(0.5);
         cy += 44 + 10;
       }
       if (prize.text) {
         var t = label(scene, WIDTH / 2, cy, prize.text, {
-          fontSize: "14px", color: "#9aa0b5", align: "center", wordWrap: { width: w - 2 * pad }
+          size: 1, color: "#9aa0b5", align: "center", wordWrap: { width: w - 2 * pad }
         }).setOrigin(0.5, 0);
         cy += t.height + 10;
       }
@@ -578,7 +604,7 @@
             clip.writeText(prize.code).then(function () { btn.text.setText("Скопировано"); },
               function () { /* без разрешения — код и так на экране */ });
           }
-        }, { width: 224, height: 48, fontSize: "16px" });
+        }, { width: 240, height: 48 });
         cy += 48 + pad;
       } else {
         cy += pad - 6;
@@ -586,6 +612,17 @@
       box.setSize(w, cy - y);
       return { height: cy - y };
     }
+  };
+
+  // --- загрузка: атлас шрифта до первого экрана -----------------------------
+  function BootScene() {
+    Phaser.Scene.call(this, { key: "zv-boot" });
+  }
+  BootScene.prototype = Object.create(Phaser.Scene.prototype);
+  BootScene.prototype.constructor = BootScene;
+  BootScene.prototype.create = function () {
+    global.ZV_PIXELFONT.install(this);
+    this.scene.start("zv-menu");
   };
 
   // --- экран «Играть» ----------------------------------------------------
@@ -598,7 +635,7 @@
     var self = this;
     ui.backdrop(this);
     if (brand.name) {
-      label(this, WIDTH / 2, 100, brand.name, { fontSize: "16px", color: SECONDARY })
+      label(this, WIDTH / 2, 100, brand.name, { size: 1, color: SECONDARY })
         .setOrigin(0.5);
     }
     ui.title(this, WIDTH / 2, 190, config.title || "Игра", 32);
@@ -615,7 +652,7 @@
         unlockAudio(self);
         if (self.scale.isFullscreen) self.scale.stopFullscreen();
         else self.scale.startFullscreen();
-      }, { width: 224, height: 48, color: "#2a2f45", fontSize: "16px" });
+      }, { width: 224, height: 48, color: "#2a2f45" });
     }
 
     post("ready");
@@ -641,7 +678,7 @@
     y += Math.max(t.height / 2, 20) + (prize ? 22 : 46);
     if (!r.hideScore) {
       label(this, WIDTH / 2, y, String(r.score || 0), {
-        fontSize: prize ? "40px" : "64px", color: SECONDARY, fontStyle: "bold"
+        size: prize ? 3 : 4, color: SECONDARY
       }).setOrigin(0.5);
       y += prize ? 34 : 60;
     }
@@ -673,7 +710,7 @@
   var game = null;
 
   function boot(kit) {
-    var scenes = [MenuScene].concat(kit.createScenes(config) || []).concat([ResultScene]);
+    var scenes = [BootScene, MenuScene].concat(kit.createScenes(config) || []).concat([ResultScene]);
     game = new Phaser.Game({
       type: Phaser.AUTO,
       parent: "game",
@@ -726,8 +763,8 @@
     HEIGHT: HEIGHT,
     PRIMARY: PRIMARY,
     SECONDARY: SECONDARY,
-    FONT: FONT,
-    TEXT_RES: TEXT_RES,
+    FONT: F.FAMILY,
+    font: F,            // метрики: width/wrap/fit/sanitize — подобрать кегль под ширину
     ui: ui,
     sprite: sprite,
     juice: juice,

@@ -36,17 +36,42 @@
   }
 
   // --- проверки контента ----------------------------------------------------
-  // Лимиты длины — под канву 360×640 с текущим шрифтом: длиннее не влезает.
-  var LIMITS = {
-    question: 90, answer: 40, typeTitle: 40, typeText: 240,
-    prizeTitle: 60, prizeCode: 32, prizeText: 200, prizeButton: 24, sector: 24
+  // «Влезает» считается настоящими метриками пиксельного шрифта (game/font.js):
+  // ширина области на канве 360×640, сколько строк допустимо и какой кегль k
+  // (10·k px) там используется. Числа совпадают с раскладкой оболочки и китов.
+  var FONT = (typeof module !== "undefined" && module.exports) ? require("./font.js") : root.ZV_FONT;
+  var AREAS = {
+    question:    { width: 300, lines: 4, k: 2 },          // вопрос квиза / теста, кегль 2
+    answer:      { width: 270, lines: 2, k: 2, kMin: 1 }, // кнопка-вариант 64 px; кегль 1 — запас
+    typeTitle:   { width: 300, lines: 2, k: 2, prefix: "Ты — " },
+    typeText:    { width: 290, lines: 4, k: 1 },
+    prizeTitle:  { width: 284, lines: 2, k: 2, kMin: 1 },
+    prizeCode:   { width: 200, lines: 1, k: 2, kMin: 1 },
+    prizeText:   { width: 284, lines: 3, k: 1 },
+    prizeButton: { width: 224, lines: 1, k: 2, kMin: 1 },
+    sector:      { width: 76,  lines: 2, k: 1 },          // сектор колеса (≤8 секторов)
+    sectorSmall: { width: 56,  lines: 2, k: 1 }           // сектор колеса (9–12 секторов)
   };
+  var MAX_LEN = 240;   // страховка от абзацев там, где ждём строку
 
   function isStr(v, min, max) {
     return typeof v === "string" && v.length >= min && v.length <= max;
   }
-  function strErr(errs, where, v, name, max) {
-    if (!isStr(v, 1, max)) errs.push(where + ": " + name + " — строка от 1 до " + max + " символов");
+
+  // Строка обязательна и влезает в область; иначе — понятная ошибка с числами.
+  function textErr(errs, where, v, name, area) {
+    if (!isStr(v, 1, MAX_LEN)) { errs.push(where + ": " + name + " — непустая строка до " + MAX_LEN + " символов"); return; }
+    fitErr(errs, where, v, name, area);
+  }
+  function fitErr(errs, where, v, name, area) {
+    var a = AREAS[area];
+    var text = (a.prefix || "") + v;
+    var miss = FONT.missing(text);
+    if (miss.length) { errs.push(where + ": " + name + " — нет таких символов в шрифте: " + miss.join(" ")); return; }
+    var k = FONT.fit(text, a.width, a.lines, a.k);
+    if (k >= (a.kMin || a.k)) return;
+    var perLine = Math.floor(a.width / (8 * (a.kMin || a.k)));
+    errs.push(where + ": " + name + " не влезает — не больше " + a.lines + " строк по ~" + perLine + " знаков");
   }
 
   // Приз: заголовок обязателен, остальное по желанию. url — только абсолютный
@@ -55,10 +80,13 @@
     where = where || "prize";
     errs = errs || [];
     if (!p || typeof p !== "object") { errs.push(where + ": объект с полем title"); return errs; }
-    strErr(errs, where, p.title, "title", LIMITS.prizeTitle);
-    if (p.code !== undefined && !isStr(p.code, 0, LIMITS.prizeCode)) errs.push(where + ": code — строка до " + LIMITS.prizeCode);
-    if (p.text !== undefined && !isStr(p.text, 0, LIMITS.prizeText)) errs.push(where + ": text — строка до " + LIMITS.prizeText);
-    if (p.button !== undefined && !isStr(p.button, 0, LIMITS.prizeButton)) errs.push(where + ": button — строка до " + LIMITS.prizeButton);
+    textErr(errs, where, p.title, "title", "prizeTitle");
+    if (p.code !== undefined && typeof p.code !== "string") errs.push(where + ": code — строка");
+    else if (p.code) fitErr(errs, where, p.code, "code", "prizeCode");
+    if (p.text !== undefined && typeof p.text !== "string") errs.push(where + ": text — строка");
+    else if (p.text) fitErr(errs, where, p.text, "text", "prizeText");
+    if (p.button !== undefined && typeof p.button !== "string") errs.push(where + ": button — строка");
+    else if (p.button) fitErr(errs, where, p.button, "button", "prizeButton");
     if (p.url !== undefined && p.url !== "" && !/^(https?:\/\/[^\s]+|\/[^\s]*)$/.test(String(p.url))) {
       errs.push(where + ": url — адрес с https:// или путь");
     }
@@ -67,7 +95,7 @@
 
   // Пустой приз (title пуст или объекта нет) — «приза нет», это не ошибка.
   function hasPrize(p) {
-    return !!(p && typeof p === "object" && isStr(p.title, 1, LIMITS.prizeTitle));
+    return !!(p && typeof p === "object" && isStr(p.title, 1, MAX_LEN));
   }
 
   function validateQuiz(data) {
@@ -77,11 +105,11 @@
     qs.forEach(function (it, i) {
       var w = "questions[" + i + "]";
       if (!it || typeof it !== "object") { errs.push(w + ": объект {q, answers, correct}"); return; }
-      strErr(errs, w, it.q, "q", LIMITS.question);
+      textErr(errs, w, it.q, "q", "question");
       if (!Array.isArray(it.answers) || it.answers.length < 2 || it.answers.length > 4) {
         errs.push(w + ": answers — от 2 до 4 вариантов");
       } else {
-        it.answers.forEach(function (a, j) { strErr(errs, w + ".answers[" + j + "]", a, "ответ", LIMITS.answer); });
+        it.answers.forEach(function (a, j) { textErr(errs, w + ".answers[" + j + "]", a, "ответ", "answer"); });
         if (new Set(it.answers).size !== it.answers.length) errs.push(w + ": варианты повторяются");
         if (!(Number.isInteger(it.correct) && it.correct >= 0 && it.correct < it.answers.length)) {
           errs.push(w + ": correct — индекс верного ответа от 0 до " + (it.answers.length - 1));
@@ -104,21 +132,22 @@
       if (!/^[a-z0-9_-]{1,32}$/.test(String(t.id))) errs.push(w + ": id — латиница/цифры/-/_ до 32");
       else if (ids[t.id]) errs.push(w + ": id «" + t.id + "» повторяется");
       ids[t.id] = true;
-      strErr(errs, w, t.title, "title", LIMITS.typeTitle);
-      if (t.text !== undefined && !isStr(t.text, 0, LIMITS.typeText)) errs.push(w + ": text — строка до " + LIMITS.typeText);
+      textErr(errs, w, t.title, "title", "typeTitle");
+      if (t.text !== undefined && typeof t.text !== "string") errs.push(w + ": text — строка");
+      else if (t.text) fitErr(errs, w, t.text, "text", "typeText");
       if (t.prize !== undefined && t.prize !== null) validatePrize(t.prize, w + ".prize", errs);
     });
     qs.forEach(function (it, i) {
       var w = "questions[" + i + "]";
       if (!it || typeof it !== "object") { errs.push(w + ": объект {q, answers}"); return; }
-      strErr(errs, w, it.q, "q", LIMITS.question);
+      textErr(errs, w, it.q, "q", "question");
       if (!Array.isArray(it.answers) || it.answers.length < 2 || it.answers.length > 4) {
         errs.push(w + ": answers — от 2 до 4 вариантов"); return;
       }
       it.answers.forEach(function (a, j) {
         var wa = w + ".answers[" + j + "]";
         if (!a || typeof a !== "object") { errs.push(wa + ": объект {text, weights}"); return; }
-        strErr(errs, wa, a.text, "text", LIMITS.answer);
+        textErr(errs, wa, a.text, "text", "answer");
         var ws = a.weights, any = false, k;
         if (!ws || typeof ws !== "object") { errs.push(wa + ": weights — объект {тип: баллы}"); return; }
         for (k in ws) {
@@ -143,17 +172,22 @@
     var items = data && data.items;
     if (!Array.isArray(items) || items.length < 2 || items.length > 12) return ["items: массив от 2 до 12 призов"];
     var ids = {}, total = 0, positive = 0;
+    var sectorArea = items.length > 8 ? "sectorSmall" : "sector";
     items.forEach(function (it, i) {
       var w = "items[" + i + "]";
       if (!it || typeof it !== "object") { errs.push(w + ": объект {id, title, weight}"); return; }
       if (!/^[a-z0-9_-]{1,32}$/.test(String(it.id))) errs.push(w + ": id — латиница/цифры/-/_ до 32");
       else if (ids[it.id]) errs.push(w + ": id «" + it.id + "» повторяется");
       ids[it.id] = true;
-      strErr(errs, w, it.title, "title", LIMITS.sector);
+      // Заголовок и на секторе колеса, и на карточке приза.
+      textErr(errs, w, it.title, "title", sectorArea);
+      if (typeof it.title === "string" && it.title) fitErr(errs, w, it.title, "title", "prizeTitle");
       if (!(typeof it.weight === "number" && it.weight >= 0 && isFinite(it.weight))) errs.push(w + ": weight — число ≥ 0");
       else { total += it.weight; if (it.weight > 0) positive++; }
-      if (it.code !== undefined && !isStr(it.code, 0, LIMITS.prizeCode)) errs.push(w + ": code — строка до " + LIMITS.prizeCode);
-      if (it.text !== undefined && !isStr(it.text, 0, LIMITS.prizeText)) errs.push(w + ": text — строка до " + LIMITS.prizeText);
+      if (it.code !== undefined && typeof it.code !== "string") errs.push(w + ": code — строка");
+      else if (it.code) fitErr(errs, w, it.code, "code", "prizeCode");
+      if (it.text !== undefined && typeof it.text !== "string") errs.push(w + ": text — строка");
+      else if (it.text) fitErr(errs, w, it.text, "text", "prizeText");
       if (it.color !== undefined && !/^#[0-9a-fA-F]{6}$/.test(String(it.color))) errs.push(w + ": color — #rrggbb");
     });
     if (!(total > 0)) errs.push("сумма весов должна быть больше нуля");
@@ -171,7 +205,7 @@
   }
 
   var api = {
-    LIMITS: LIMITS,
+    AREAS: AREAS,
     mergeParams: mergeParams,
     validate: validate,
     validatePrize: validatePrize,

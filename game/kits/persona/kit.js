@@ -54,13 +54,13 @@
     }
 
     this.progressText = ZV.ui.text(this, W / 2, 55, "", {
-      fontSize: "16px", color: "#9aa0b5"
+      size: 1, color: "#9aa0b5"
     }).setOrigin(0.5).setDepth(5);
     this.timeText = ZV.ui.text(this, W - 20, 55, "", {
-      fontSize: "24px", color: ZV.SECONDARY
+      size: 2, color: ZV.SECONDARY
     }).setOrigin(1, 0.5).setDepth(5);
     this.questionText = ZV.ui.text(this, W / 2, 170, "", {
-      fontSize: "24px", align: "center", wordWrap: { width: W - 60 }
+      size: 2, align: "center", wordWrap: { width: W - 60 }
     }).setOrigin(0.5);
 
     this.choices = ZV.ui.choices(this, { y: 310, step: 75, onPick: function (i) { answer(self, i); } });

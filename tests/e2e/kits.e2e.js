@@ -205,3 +205,33 @@ test("битый контент — экран ошибки и событие er
     assert.ok(g.errors[0].includes("content/quiz.json"));
   } finally { await g.close(); }
 });
+
+test("шрифт: весь текст — BitmapText из атласа целым кеглем, canvas-текста нет", async () => {
+  const g = await openGame(browser, server, { archetype: "quiz", seed: 2, prize: { title: "Скидка 10%", code: "PX10", text: "На заказ", button: "", url: "" } });
+  try {
+    const check = (sceneKey) => g.scene((key) => {
+      const sc = window.ZV.game.scene.getScene(key);
+      const objs = sc.children.list;
+      const texts = objs.filter((o) => o.type === "Text").length;
+      const bts = objs.filter((o) => o.type === "BitmapText");
+      const bad = bts.filter((o) => o.font !== "zv-font" || o.fontSize % 10 !== 0 || !Number.isInteger(o.x) || !Number.isInteger(o.y))
+        .map((o) => [o.text, o.font, o.fontSize, o.x, o.y]);
+      return { texts, bitmap: bts.length, bad, fontCached: window.ZV.game.cache.bitmapFont.has("zv-font"),
+        atlas: window.ZV.game.textures.exists("zv-font"), sample: bts[0] && bts[0].text };
+    }, sceneKey);
+    const menu = await check("zv-menu");
+    assert.equal(menu.texts, 0, "на экране «Играть» есть canvas-текст");
+    assert.ok(menu.bitmap >= 3 && menu.fontCached && menu.atlas, JSON.stringify(menu));
+    assert.deepEqual(menu.bad, [], "кегль не кратен 10 или дробные координаты");
+    await g.play();
+    const play = await check("zv-play");
+    assert.equal(play.texts, 0); assert.deepEqual(play.bad, []);
+    await answerAll(g, (st) => st.correct);
+    await g.waitFinish(0, 20000);
+    await g.page.waitForTimeout(300);
+    const res = await check("zv-result");
+    assert.equal(res.texts, 0); assert.deepEqual(res.bad, []);
+    assert.ok(res.bitmap >= 6, "на результате мало надписей: " + res.bitmap);
+    clean(g);
+  } finally { await g.close(); }
+});

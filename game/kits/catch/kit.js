@@ -83,13 +83,13 @@
     });
 
     this.scoreText = ZV.ui.text(this, W / 2, 60, "0", {
-      fontSize: "40px", fontStyle: "bold"
+      size: 3
     }).setOrigin(0.5).setDepth(5);
     this.livesText = ZV.ui.text(this, W / 2, 105, "промахи: 0/" + S.misses, {
-      fontSize: "16px", color: "#9aa0b5"
+      size: 1, color: "#9aa0b5"
     }).setOrigin(0.5).setDepth(5);
     this.timeText = ZV.ui.text(this, W - 20, 60, "", {
-      fontSize: "16px", color: "#9aa0b5"
+      size: 1, color: "#9aa0b5"
     }).setOrigin(1, 0.5).setDepth(5);
 
     // Корзина следует за пальцем; тап без движения тоже переставляет её.
