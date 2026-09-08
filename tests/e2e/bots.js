@@ -107,6 +107,9 @@
       var sc = global.ZV.game.scene.getScene("zv-play");
       if (!sc || !sc.sys.isActive() || !sc.order) return null;
       var item = sc.order[sc.index];
+      // Между последним ответом и экраном результата (задержка 700 мс) индекс
+      // уже за концом списка — вопроса нет, тест ждёт finish.
+      if (!item) return null;
       return { index: sc.index, total: sc.order.length, locked: sc.locked, over: sc.over,
         correct: typeof item.correct === "number" ? item.correct : -1, answers: item.answers.length, score: sc.score };
     }
