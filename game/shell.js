@@ -22,6 +22,40 @@
   var PRIMARY = brand.primary || "#4f7cff";
   var SECONDARY = brand.secondary || "#ffd23f";
 
+  // Перекрытия для автопрогона (tests/e2e): сид и параметры кита. В обычной
+  // игре объекта нет.
+  var TEST = global.ZV_TEST || {};
+
+  // Случайность с сидом: ?seed=42 воспроизводит партию, иначе сид со времени.
+  // Кит зовёт ZV.random() / .between / .pick / .shuffle / .weighted — не Math.random.
+  var seedValue = TEST.seed !== undefined ? TEST.seed
+    : global.ZV_RANDOM.seedFromSearch(global.location ? global.location.search : "");
+  var random = global.ZV_RANDOM.create(seedValue);
+  // Для багрепорта: «открой ?seed=<число>» повторяет партию.
+  if (global.console && global.console.log) global.console.log("game seed: " + random.seed);
+
+  // Параметры кита: дефолты кита ← config.params ← перекрытия теста.
+  // Опечатка в config.params не ломает игру — уходит в предупреждение.
+  function params(defaults) {
+    var r = global.ZV_CONTENT.mergeParams(defaults, config.params, TEST.params);
+    for (var i = 0; i < r.warnings.length; i++) {
+      if (global.console) global.console.warn("config.params: " + r.warnings[i]);
+    }
+    return r.params;
+  }
+
+  // Контент кита: content/<kind>.json грузится в preload (loadContent), в
+  // create кит берёт content(scene, kind) → { data, errors }. Ошибки формата
+  // показываются экраном (ui.fail), а не белой страницей.
+  function loadContent(scene, kind, url) {
+    scene.load.json("zv-content-" + kind, url || ("content/" + kind + ".json"));
+  }
+  function content(scene, kind) {
+    var data = scene.cache.json.get("zv-content-" + kind);
+    if (!data) return { data: null, errors: ["content/" + kind + ".json не загрузился"] };
+    return { data: data, errors: global.ZV_CONTENT.validate(kind, data) };
+  }
+
   var lastResult = { score: 0, won: false, meta: {} };
 
   // --- события родителю (контракт встраивания) ---------------------------
@@ -99,6 +133,70 @@
     // Фон экрана: заглушка вместо оформления — подставляется картинкой кита.
     backdrop: function (scene) {
       scene.add.rectangle(WIDTH / 2, HEIGHT / 2, WIDTH, HEIGHT, 0x101018).setOrigin(0.5);
+    },
+
+    // Столбик кнопок-вариантов (ответы квиза, реплики новеллы). Кнопки
+    // создаются один раз и перезаполняются set(): текст поверх текста и утечки
+    // при пересоздании — типовая ошибка. Тач-цель 64 px при шаге 75.
+    // opts: { y, step, height, width, max, fontSize, onPick(i) }.
+    choices: function (scene, opts) {
+      opts = opts || {};
+      var y0 = opts.y || 310, step = opts.step || 75;
+      var h = opts.height || 64, w = opts.width || WIDTH - 60;
+      var max = opts.max || 4;
+      var IDLE = 0x2a2f45;
+      var ctl = { items: [], enabled: true };
+      function make(i) {
+        var y = y0 + i * step;
+        var box = scene.add.rectangle(WIDTH / 2, y, w, h, IDLE)
+          .setOrigin(0.5).setInteractive({ useHandCursor: true });
+        box.setStrokeStyle(2, 0xffffff, 0.12);
+        var text = label(scene, WIDTH / 2, y, "", {
+          fontSize: opts.fontSize || "18px", align: "center", wordWrap: { width: w - 30 }
+        }).setOrigin(0.5);
+        box.on("pointerup", function () {
+          if (ctl.enabled && box.visible && opts.onPick) opts.onPick(i);
+        });
+        return { box: box, text: text };
+      }
+      for (var i = 0; i < max; i++) ctl.items.push(make(i));
+      // Подставить подписи: лишние кнопки прячутся, цвета сбрасываются.
+      ctl.set = function (labels) {
+        for (var i = 0; i < ctl.items.length; i++) {
+          var it = ctl.items[i], on = !!(labels && labels[i]);
+          it.text.setText(on ? String(labels[i]) : "");
+          it.box.setFillStyle(IDLE);
+          it.box.setVisible(on);
+          it.text.setVisible(on);
+        }
+        return ctl;
+      };
+      ctl.color = function (i, hex) {
+        if (ctl.items[i]) ctl.items[i].box.setFillStyle(hex);
+        return ctl;
+      };
+      ctl.setDepth = function (d) {
+        ctl.items.forEach(function (it) { it.box.setDepth(d); it.text.setDepth(d + 1); });
+        return ctl;
+      };
+      // Координата центра i-й кнопки — для автопрогона и подсказок.
+      ctl.centerOf = function (i) { return { x: WIDTH / 2, y: y0 + i * step }; };
+      return ctl;
+    },
+
+    // Экран ошибки данных: заголовок и до восьми строк. Видит и человек в
+    // превью, и автопрогон (в консоль уходит error).
+    fail: function (scene, title, lines) {
+      ui.backdrop(scene);
+      label(scene, WIDTH / 2, 80, title || "Ошибка в данных игры", {
+        fontSize: "20px", fontStyle: "bold", color: "#ff5f6d", align: "center", wordWrap: { width: WIDTH - 40 }
+      }).setOrigin(0.5);
+      var list = (lines || []).slice(0, 8);
+      label(scene, 20, 130, list.map(function (l) { return "• " + l; }).join("\n"), {
+        fontSize: "14px", color: "#e6e8f0", wordWrap: { width: WIDTH - 40 }, lineSpacing: 6
+      });
+      if (global.console && global.console.error) global.console.error((title || "content error") + ": " + list.join(" | "));
+      post("error", { message: title || "content error", details: list });
     },
 
     text: label
@@ -434,6 +532,62 @@
     }
   };
 
+  // --- призы -------------------------------------------------------------
+  // Приз: { title, code, text, button, url }. Откуда берётся: config.prize
+  // (один приз за победу в любом ките) или сам кит (колесо, «какой ты»)
+  // через ZV.finish(scene, { prize }). Карточка рисуется на экране результата.
+  var prizes = {
+    // Взвешенный выбор из content/wheel.json-подобного списка (item.weight).
+    pick: function (items) { return random.weighted(items); },
+
+    // Карточка приза с верхом в y. Возвращает { height }.
+    card: function (scene, prize, y) {
+      var w = WIDTH - 48, pad = 14, cy = y + pad;
+      var box = scene.add.rectangle(WIDTH / 2, y, w, 10, 0x1b1f33).setOrigin(0.5, 0);
+      box.setStrokeStyle(2, Phaser.Display.Color.HexStringToColor(SECONDARY).color, 0.6);
+      var title = label(scene, WIDTH / 2, cy, prize.title, {
+        fontSize: "18px", fontStyle: "bold", align: "center", wordWrap: { width: w - 2 * pad }
+      }).setOrigin(0.5, 0);
+      cy += title.height + 10;
+      if (prize.code) {
+        var codeBox = scene.add.rectangle(WIDTH / 2, cy, 216, 44, 0x101018).setOrigin(0.5, 0);
+        codeBox.setStrokeStyle(2, 0xffffff, 0.12);
+        label(scene, WIDTH / 2, cy + 22, prize.code, {
+          fontSize: "24px", fontStyle: "bold", color: SECONDARY
+        }).setOrigin(0.5);
+        cy += 44 + 10;
+      }
+      if (prize.text) {
+        var t = label(scene, WIDTH / 2, cy, prize.text, {
+          fontSize: "14px", color: "#9aa0b5", align: "center", wordWrap: { width: w - 2 * pad }
+        }).setOrigin(0.5, 0);
+        cy += t.height + 10;
+      }
+      var action = prize.url ? "open" : (prize.code ? "copy" : "");
+      if (action) {
+        var caption = prize.button || (action === "open" ? "Забрать" : "Скопировать код");
+        var btn = ui.button(scene, WIDTH / 2, cy + 24, caption, function () {
+          if (action === "open") {
+            try { global.open(prize.url, "_blank", "noopener"); } catch (e) { /* блокировщик окон */ }
+            post("prize", { action: "open", code: prize.code || "", url: prize.url });
+            return;
+          }
+          post("prize", { action: "copy", code: prize.code });
+          var clip = global.navigator && global.navigator.clipboard;
+          if (clip && clip.writeText) {
+            clip.writeText(prize.code).then(function () { btn.text.setText("Скопировано"); },
+              function () { /* без разрешения — код и так на экране */ });
+          }
+        }, { width: 224, height: 48, fontSize: "16px" });
+        cy += 48 + pad;
+      } else {
+        cy += pad - 6;
+      }
+      box.setSize(w, cy - y);
+      return { height: cy - y };
+    }
+  };
+
   // --- экран «Играть» ----------------------------------------------------
   function MenuScene() {
     Phaser.Scene.call(this, { key: "zv-menu" });
@@ -476,21 +630,41 @@
   ResultScene.prototype.init = function (data) {
     this.result = data || lastResult;
   };
+  // Раскладка зависит от того, есть ли приз: с карточкой всё поджимается вверх.
   ResultScene.prototype.create = function () {
     var self = this;
     var r = this.result || {};
+    var prize = r.prize && global.ZV_CONTENT.hasPrize(r.prize) ? r.prize : null;
     ui.backdrop(this);
-    ui.title(this, WIDTH / 2, 190, r.won ? "Победа" : "Раунд окончен", 32);
-    label(this, WIDTH / 2, 260, String(r.score || 0), {
-      fontSize: "64px", color: SECONDARY, fontStyle: "bold"
-    }).setOrigin(0.5);
-    ui.hint(this, WIDTH / 2, 320, r.text || "очков");
-
-    ui.button(this, WIDTH / 2, HEIGHT / 2 + 110, "Ещё раз", function () {
-      post("start");
-      self.scene.start("zv-play");
-    });
-    ui.button(this, WIDTH / 2, HEIGHT / 2 + 190, "В меню", function () {
+    var y = prize ? 90 : 190;
+    var t = ui.title(this, WIDTH / 2, y, r.title || (r.won ? "Победа" : "Раунд окончен"), prize ? 26 : 32);
+    y += Math.max(t.height / 2, 20) + (prize ? 22 : 46);
+    if (!r.hideScore) {
+      label(this, WIDTH / 2, y, String(r.score || 0), {
+        fontSize: prize ? "40px" : "64px", color: SECONDARY, fontStyle: "bold"
+      }).setOrigin(0.5);
+      y += prize ? 34 : 60;
+    }
+    if (r.text) {
+      var h = ui.hint(this, WIDTH / 2, y, r.text);
+      y += h.height / 2 + (prize ? 18 : 40);
+    }
+    if (prize) {
+      y += prizes.card(this, prize, Math.round(y)).height + 18;
+    } else {
+      y = Math.max(y, HEIGHT / 2 + 78);
+    }
+    var by = Math.round(Math.max(y + 32, prize ? HEIGHT - 116 : HEIGHT / 2 + 110));
+    if (r.replay !== false) {
+      ui.button(this, WIDTH / 2, by, "Ещё раз", function () {
+        post("start");
+        self.scene.start("zv-play");
+      });
+      by += 80;
+    } else {
+      by = Math.round(y + 32);   // без «Ещё раз» — «В меню» сразу под карточкой
+    }
+    ui.button(this, WIDTH / 2, Math.min(by, HEIGHT - 36), "В меню", function () {
       self.scene.start("zv-menu");
     }, { width: 192, height: 48, color: "#2a2f45" });
   };
@@ -560,12 +734,32 @@
     floor: floor,
     FLOOR_DEPTH: FLOOR_DEPTH,
     boot: boot,
+    random: random,
+    seed: random.seed,
+    params: params,
+    loadContent: loadContent,
+    content: content,
+    prizes: prizes,
 
     // Кит зовёт это в конце раунда: событие родителю + экран результата.
+    // result: { score, won, text, meta, title, hideScore, prize, outcome, replay }.
+    // prize — карточка на экране результата; без него при победе берётся
+    // config.prize. outcome — исход словом (тип в «какой ты», концовка) для
+    // аналитики партнёра. replay: false — без кнопки «Ещё раз» (розыгрыш).
     finish: function (scene, result) {
       var r = result || {};
-      lastResult = { score: r.score || 0, won: !!r.won, meta: r.meta || {}, text: r.text || "очков" };
-      post("finish", { score: lastResult.score, won: lastResult.won, meta: lastResult.meta });
+      var prize = r.prize;
+      if (!prize && r.won && global.ZV_CONTENT.hasPrize(config.prize)) prize = config.prize;
+      lastResult = {
+        score: r.score || 0, won: !!r.won, meta: r.meta || {},
+        text: typeof r.text === "string" ? r.text : "очков",
+        title: r.title || "", hideScore: !!r.hideScore,
+        prize: prize || null, outcome: r.outcome || "", replay: r.replay !== false
+      };
+      var payload = { score: lastResult.score, won: lastResult.won, meta: lastResult.meta };
+      if (lastResult.outcome) payload.outcome = lastResult.outcome;
+      if (prize) payload.prize = { id: prize.id || "", title: prize.title, code: prize.code || "" };
+      post("finish", payload);
       scene.scene.start("zv-result", lastResult);
     }
   };

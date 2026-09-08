@@ -9,3 +9,19 @@ jobs:
         with:
           node-version: "20"
       - run: node --test tests game
+  # Headless-прогон китов в Chromium: боты играют за эксперта и новичка,
+  # проверяются события встраивания, инварианты и консоль. Зависимости живут
+  # в tests/e2e и в публикацию не попадают.
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm ci
+        working-directory: tests/e2e
+      - run: npx playwright install --with-deps chromium
+        working-directory: tests/e2e
+      - run: npm test
+        working-directory: tests/e2e

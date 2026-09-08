@@ -5,19 +5,23 @@
 (function (global) {
   "use strict";
 
-  // Настройки раунда: здесь крутится сложность. Все числа — в единицах
-  // канвы 360×640.
-  var S = {
+  // Настройки раунда по умолчанию: здесь крутится сложность. Все числа — в
+  // единицах канвы 360×640. Правятся НЕ здесь, а в config.params (те же
+  // ключи); S собирается в create через ZV.params.
+  var DEFAULTS = {
     gravity: 2600,       // притяжение (выше — падение резче и прыжок короче)
     jump: 850,           // прыжок: высота ~139 px, полёт ~0,65 с
     speedStart: 190,     // стартовая скорость препятствий, px/с
-    speedMax: 500,       // потолок скорости
+    speedMax: 500,       // потолок скорости (реакция ≥ 250 мс проверяется game/balance.test.js)
     speedStep: 9,        // прибавка скорости за каждое пройденное препятствие
     spawnStart: 1500,    // пауза между препятствиями, мс
-    spawnMin: 700,       // минимальная пауза; должна быть > полёта 0,65 с
+    spawnMin: 900,       // минимальная пауза ≥ 1.35 полёта (0,65 с), иначе пары непроходимы
     spawnStep: 45,       // на сколько сокращается пауза за препятствие
-    lives: 1             // столкновений до конца раунда
+    tallChance: 0.3,     // доля высоких препятствий
+    lives: 1,            // столкновений до конца раунда
+    passScore: 15        // препятствий для победы
   };
+  var S = DEFAULTS;
 
   var GROUND_Y = 490;    // верх дорожки на канве 360×640
   var TILE = 32;         // тайл земли: сторона степень двойки — можно tileSprite
@@ -74,6 +78,7 @@
     var W = global.ZV.WIDTH, H = global.ZV.HEIGHT;
     var ZV = global.ZV, ZV_LAYOUT = global.ZV_LAYOUT;
 
+    S = ZV.params(DEFAULTS);
     this.score = 0;
     this.lives = S.lives;
     this.speed = S.speedStart;
@@ -229,7 +234,7 @@
     if (scene.over) return;
     // Две готовые текстуры вместо растягивания одной: масштаб спрайта
     // множится на размер тела, и хитбокс перестаёт совпадать с картинкой.
-    var tall = Math.random() < 0.3;
+    var tall = global.ZV.random.chance(S.tallChance);
     var b = scene.blocks.create(global.ZV.WIDTH + 40, GROUND_Y, tall ? "blockTall" : "block");
     global.ZV.sprite.apply(b, {});   // якорь по низу + тело по кадру
     b.setVelocityX(-scene.speed);
@@ -241,7 +246,7 @@
     scene.physics.pause();
     global.ZV.finish(scene, {
       score: scene.score,
-      won: scene.score >= 15,
+      won: scene.score >= S.passScore,
       text: "препятствий пройдено",
       meta: { archetype: "runner" }
     });
@@ -337,6 +342,7 @@
 
   global.ZV_KITS = global.ZV_KITS || {};
   global.ZV_KITS.runner = {
+    defaults: DEFAULTS,
     createScenes: function () { return [new PlayScene()]; }
   };
 })(window);

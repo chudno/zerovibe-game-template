@@ -1,26 +1,22 @@
-// Кит «Викторина»: вопрос и четыре ответа, на каждый вопрос таймер.
+// Кит «Викторина»: вопрос и до четырёх ответов, на каждый вопрос таймер.
 // Чем дальше, тем меньше времени. Ассетов не требует — только текст.
-// Канва 360×640; текст — через ZV.ui.text (пиксельный шрифт и resolution).
+// Вопросы — в content/quiz.json (формат и проверка — game/content.js),
+// баланс — в config.params. Канва 360×640; текст — через ZV.ui.
 (function (global) {
   "use strict";
 
-  var S = {
-    timeStart: 15,   // секунд на первый вопрос
-    timeMin: 6,      // нижняя граница
-    timeStep: 1,     // на сколько сокращается таймер с каждым вопросом
-    points: 10,      // очки за верный ответ
-    bonusPerSec: 1,  // бонус за каждую оставшуюся секунду
-    passScore: 30    // порог победы
+  // Настройки по умолчанию; правятся в config.params (те же ключи).
+  var DEFAULTS = {
+    timeStart: 15,        // секунд на первый вопрос
+    timeMin: 6,           // нижняя граница
+    timeStep: 1,          // на сколько сокращается таймер с каждым вопросом
+    points: 10,           // очки за верный ответ
+    bonusPerSec: 1,       // бонус за каждую оставшуюся секунду
+    passScore: 30,        // порог победы
+    questionsPerRound: 0, // сколько вопросов в раунде; 0 — все из файла
+    shuffleAnswers: false // перемешивать ли варианты (correct пересчитывается)
   };
-
-  // Вопросы. Правильный — индекс в answers (нумерация с нуля).
-  var QUESTIONS = [
-    { q: "Какой сейчас век?", answers: ["XIX", "XX", "XXI", "XXII"], correct: 2 },
-    { q: "Сколько сторон у шестиугольника?", answers: ["4", "5", "6", "8"], correct: 2 },
-    { q: "Что тяжелее: килограмм пуха или килограмм железа?", answers: ["Пух", "Железо", "Одинаково", "Смотря где"], correct: 2 },
-    { q: "Сколько минут в двух часах?", answers: ["100", "120", "60", "180"], correct: 1 },
-    { q: "Какого цвета небо в ясный день?", answers: ["Зелёное", "Синее", "Красное", "Жёлтое"], correct: 1 }
-  ];
+  var S = DEFAULTS;
 
   function PlayScene() {
     Phaser.Scene.call(this, { key: "zv-play" });
@@ -28,16 +24,32 @@
   PlayScene.prototype = Object.create(Phaser.Scene.prototype);
   PlayScene.prototype.constructor = PlayScene;
 
+  PlayScene.prototype.preload = function () {
+    global.ZV.loadContent(this, "quiz");
+  };
+
   PlayScene.prototype.create = function () {
-    var W = global.ZV.WIDTH, H = global.ZV.HEIGHT;
+    var self = this;
+    var ZV = global.ZV;
+    var W = ZV.WIDTH, H = ZV.HEIGHT;
     this.add.rectangle(W / 2, H / 2, W, H, 0x101018);
+
+    S = ZV.params(DEFAULTS);
+    var c = ZV.content(this, "quiz");
+    this.over = false;
+    this.deadline = 0;
+    if (c.errors.length) {
+      this.over = true;
+      ZV.ui.fail(this, "Ошибки в content/quiz.json", c.errors);
+      return;
+    }
 
     this.score = 0;
     this.index = 0;
-    this.over = false;
-    this.order = shuffle(QUESTIONS.slice());
+    this.order = ZV.random.shuffle(c.data.questions.slice());
+    if (S.questionsPerRound > 0) this.order = this.order.slice(0, S.questionsPerRound);
+    if (S.shuffleAnswers) this.order = this.order.map(shuffleAnswers);
 
-    var ZV = global.ZV;
     this.scoreText = ZV.ui.text(this, 20, 55, "0", {
       fontSize: "32px", fontStyle: "bold"
     }).setOrigin(0, 0.5).setDepth(5);
@@ -53,10 +65,8 @@
       align: "center", wordWrap: { width: W - 60 }
     }).setOrigin(0.5);
 
-    this.buttons = [];
-    for (var i = 0; i < 4; i++) {
-      this.buttons.push(makeAnswer(this, i));
-    }
+    // Шаг 75 при высоте кнопки 64: тач-цель заведомо больше 24 логических px.
+    this.choices = ZV.ui.choices(this, { y: 310, step: 75, onPick: function (i) { answer(self, i); } });
 
     ask(this);
   };
@@ -68,32 +78,22 @@
     if (left <= 0) answer(this, -1);
   };
 
-  function makeAnswer(scene, i) {
-    var W = global.ZV.WIDTH;
-    // Шаг 75 при высоте кнопки 64: тач-цель заведомо больше 24 логических px.
-    var y = 310 + i * 75;
-    var box = scene.add.rectangle(W / 2, y, W - 60, 64, 0x2a2f45)
-      .setOrigin(0.5).setInteractive({ useHandCursor: true });
-    box.setStrokeStyle(2, 0xffffff, 0.12);
-    var text = global.ZV.ui.text(scene, W / 2, y, "", {
-      fontSize: "18px",
-      align: "center", wordWrap: { width: W - 90 }
-    }).setOrigin(0.5);
-    box.on("pointerup", function () { answer(scene, i); });
-    return { box: box, text: text };
+  // Варианты вперемешку, индекс верного следует за своим текстом.
+  function shuffleAnswers(item) {
+    var idx = item.answers.map(function (_, i) { return i; });
+    global.ZV.random.shuffle(idx);
+    return {
+      q: item.q,
+      answers: idx.map(function (i) { return item.answers[i]; }),
+      correct: idx.indexOf(item.correct)
+    };
   }
 
   function ask(scene) {
     var item = scene.order[scene.index];
     scene.questionText.setText(item.q);
     scene.progressText.setText((scene.index + 1) + " / " + scene.order.length);
-    for (var i = 0; i < scene.buttons.length; i++) {
-      var b = scene.buttons[i];
-      b.text.setText(item.answers[i] || "");
-      b.box.setFillStyle(0x2a2f45);
-      b.box.setVisible(!!item.answers[i]);
-      b.text.setVisible(!!item.answers[i]);
-    }
+    scene.choices.set(item.answers);
     scene.limit = Math.max(S.timeMin, S.timeStart - scene.index * S.timeStep);
     scene.deadline = scene.time.now + scene.limit * 1000;
     scene.locked = false;
@@ -106,15 +106,15 @@
     var left = Math.max(0, Math.ceil((scene.deadline - scene.time.now) / 1000));
     var right = picked === item.correct;
 
-    scene.buttons[item.correct].box.setFillStyle(0x2e9e5b);
-    if (picked >= 0 && !right) scene.buttons[picked].box.setFillStyle(0xa33b45);
+    scene.choices.color(item.correct, 0x2e9e5b);
+    if (picked >= 0 && !right) scene.choices.color(picked, 0xa33b45);
 
     if (right) {
       scene.score += S.points + left * S.bonusPerSec;
       scene.scoreText.setText(String(scene.score));
     }
 
-    scene.time.delayedCall(700, function () {
+    scene.nextCall = scene.time.delayedCall(700, function () {
       scene.index += 1;
       if (scene.index >= scene.order.length) finish(scene);
       else ask(scene);
@@ -132,16 +132,9 @@
     });
   }
 
-  function shuffle(list) {
-    for (var i = list.length - 1; i > 0; i--) {
-      var j = Math.floor(Math.random() * (i + 1));
-      var t = list[i]; list[i] = list[j]; list[j] = t;
-    }
-    return list;
-  }
-
   global.ZV_KITS = global.ZV_KITS || {};
   global.ZV_KITS.quiz = {
+    defaults: DEFAULTS,
     createScenes: function () { return [new PlayScene()]; }
   };
 })(window);

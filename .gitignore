@@ -1,6 +1,5 @@
 # macOS
 .DS_Store
 ._*
-# сборка
-/game-template
-/server
+# зависимости автопрогона
+tests/e2e/node_modules/

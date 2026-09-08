@@ -57,6 +57,11 @@ test("config.js указывает на существующий кит", () => 
   assert.ok(fs.existsSync(path.join(root, "game", "kits", m[1], "kit.js")), `кит ${m[1]} не найден`);
 });
 
+test("в корне нет package.json — зависимостей в рантайме у игры быть не должно", () => {
+  assert.ok(!fs.existsSync(path.join(root, "package.json")));
+  assert.ok(!fs.existsSync(path.join(root, "node_modules")));
+});
+
 test("весь JS игры парсится (по одному файлу — node --check с несколькими проверяет только первый)", () => {
   for (const f of siteFiles()) {
     if (!f.endsWith(".js") || f.startsWith("vendor/")) continue;

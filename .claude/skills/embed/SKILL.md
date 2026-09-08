@@ -25,8 +25,15 @@ description: Контракт встраивания игры на сайт бр
 ```js
 {source: "zv-game", type: "ready"}                     // страница загрузилась
 {source: "zv-game", type: "start"}                     // игрок нажал «Играть»
-{source: "zv-game", type: "finish", score, won, meta}  // конец раунда
+{source: "zv-game", type: "finish", score, won, meta,  // конец раунда
+  outcome?, prize?: {id, title, code}}                 // исход словом и приз, если есть
+{source: "zv-game", type: "prize", action, code, url?} // игрок нажал «Скопировать код»/«Забрать»
+{source: "zv-game", type: "error", message, details}   // битые данные игры (content/*.json)
 ```
+`outcome` — исход не числом: тип в «какой ты», id приза в розыгрыше, позже
+концовка новеллы. `prize` — что показала карточка приза (из `config.prize`
+или из контента кита). По `prize` и `outcome` партнёр считает воронку и
+выдаёт одноразовые коды.
 Обратно сайт может прислать `{source: "zv-host", type: "restart"}` — игра
 начнёт заново.
 
@@ -42,8 +49,10 @@ window.addEventListener("message", (e) => {
 ## Твоя часть
 
 - `finish` шлёт **оболочка**: кит вызывает
-  `ZV.finish(scene, {score, won, meta, text})` (скилл `game-runtime`). `text` —
-  подпись под числом на экране результата, наружу не уходит.
+  `ZV.finish(scene, {score, won, meta, text, outcome, prize})` (скилл
+  `game-runtime`). `text` — подпись под числом на экране результата, наружу не
+  уходит. Приз за победу задаётся в `config.prize`, вручную его в `finish`
+  передают только киты с призом внутри (розыгрыш, «какой ты»).
 - `won` — булево «приз заслужен» по порогу из брифа. `meta` — маленький объект
   под кампанию (например `{level: 3}`), не сваливай туда всё состояние.
 - **Имена `zv-game` / `zv-host` не переименовывай** — на них уже написан

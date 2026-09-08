@@ -5,7 +5,9 @@
 (function (global) {
   "use strict";
 
-  var S = {
+  // Настройки по умолчанию; правятся в config.params (те же ключи), S
+  // собирается в create через ZV.params.
+  var DEFAULTS = {
     duration: 45000,     // длительность раунда, мс
     fallStart: 160,      // стартовая скорость падения, px/с
     fallMax: 410,        // потолок скорости
@@ -16,8 +18,10 @@
     badChance: 0.28,     // доля «плохих» предметов
     goodPoints: 1,       // очки за хороший
     badPenalty: 2,       // штраф за плохой
-    misses: 5            // сколько хороших можно уронить
+    misses: 5,           // сколько хороших можно уронить
+    passScore: 20        // очков для победы (если дожил до конца времени)
   };
+  var S = DEFAULTS;
 
   var BASKET_Y = 560;
 
@@ -57,6 +61,7 @@
     var W = global.ZV.WIDTH, H = global.ZV.HEIGHT;
     var ZV = global.ZV;
 
+    S = ZV.params(DEFAULTS);
     this.score = 0;
     this.missed = 0;
     this.fall = S.fallStart;
@@ -143,8 +148,8 @@
 
   function spawn(scene) {
     if (scene.over) return;
-    var good = Math.random() > S.badChance;
-    var x = Phaser.Math.Between(45, global.ZV.WIDTH - 45);
+    var good = !global.ZV.random.chance(S.badChance);
+    var x = global.ZV.random.between(45, global.ZV.WIDTH - 45);
     var it = scene.items.create(x, -30, good ? "good" : "bad");
     global.ZV.sprite.apply(it, { origin: false, bodyW: ITEM_BODY.bodyW, bodyH: ITEM_BODY.bodyH });
     it.setData("good", good);
@@ -178,7 +183,7 @@
     scene.physics.pause();
     global.ZV.finish(scene, {
       score: scene.score,
-      won: survived && scene.score >= 20,
+      won: survived && scene.score >= S.passScore,
       text: "поймано",
       meta: { archetype: "catch", missed: scene.missed }
     });
@@ -220,6 +225,7 @@
 
   global.ZV_KITS = global.ZV_KITS || {};
   global.ZV_KITS.catch = {
+    defaults: DEFAULTS,
     createScenes: function () { return [new PlayScene()]; }
   };
 })(window);

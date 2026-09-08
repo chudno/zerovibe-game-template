@@ -9,15 +9,45 @@ description: Устройство шаблона игры — какой фай�
 vendor/                      движок, локальная копия (НЕ трогаешь)
 index.html                   <div id="game"> + подключение скриптов
 game/style.css               стили вокруг канвы (image-rendering!)
-game/config.js               window.ZV_GAME — настройка и картинки
-game/shell.js                window.ZV: экраны, ui/sprite/juice/floor
+game/config.js               window.ZV_GAME — настройка: params, prize, картинки
+content/<kit>.json           тексты и призы китов (quiz, persona, wheel)
+game/shell.js                window.ZV: экраны, ui/sprite/juice/floor/prizes
+game/random.js               ZV.random — случайность с сидом (?seed=)
+game/content.js              слияние params и проверка content/*.json
+game/balance.js              физика раннера числами (окно прыжка, реакция)
+game/layout.js               геометрия: фон, сетка кадров, хитбокс
 game/main.js                 берёт кит по config.archetype
 game/kits/<a>/               kit.js + README.md — механика архетипа
 ```
 
-**Механику пишешь в `kits/<archetype>/kit.js`**, настройку заказа — в
-`config.js`. `shell.js` и `index.html` трогай, только если задача правда про
+**Баланс правишь в `config.params`, тексты — в `content/*.json`, картинки —
+в `config.assets`.** В `kits/<archetype>/kit.js` лезь только за новой
+механикой. `shell.js` и `index.html` трогай, только если задача правда про
 оболочку (новый экран, новое событие наружу), и после — тесты.
+
+## Случайность, параметры, контент, призы
+
+- **`ZV.random`** — единственный источник случайности: `ZV.random()` 0..1,
+  `.between(a, b)` целое включительно, `.chance(p)`, `.pick(list)`,
+  `.shuffle(list)`, `.weighted(items)` по `item.weight`. `Math.random` и
+  `Phaser.Math.Between` в китах запрещены тестом: партия обязана повторяться
+  по `?seed=42` — так воспроизводят жалобу и так работает автопрогон.
+- **`ZV.params(DEFAULTS)`** — кит держит объект `DEFAULTS` (числа/строки/
+  булевы), в `create` берёт `S = ZV.params(DEFAULTS)`: сверху ложится
+  `config.params`. Неизвестный ключ или чужой тип — предупреждение в консоли,
+  игра на дефолте. Каждый ключ `DEFAULTS` обязан быть описан в README кита
+  (тест). Объект кита: `ZV_KITS.x = { defaults: DEFAULTS, createScenes }`.
+- **Контент**: в `preload` — `ZV.loadContent(this, "quiz")` грузит
+  `content/quiz.json`; в `create` — `var c = ZV.content(this, "quiz")` →
+  `{ data, errors }`. Есть ошибки — `ZV.ui.fail(this, "Ошибки в …", c.errors)`
+  и выход: экран со списком вместо белой страницы, наружу событие `error`.
+  Валидаторы (длины под канву, индексы, веса, достижимость типов) — в
+  `game/content.js`, те же гоняет `node --test`. Новый вид контента — новый
+  валидатор там же, иначе файл не проверяется.
+- **Призы**: `config.prize` `{title, code, text, button, url}` — карточка на
+  экране результата при `won`. Кит с призом внутри (розыгрыш, «какой ты»)
+  передаёт `prize` в `ZV.finish` сам. `ZV.prizes.pick(items)` — взвешенный
+  выбор. Веса призов подтверждает человек: это шанс выигрыша в акции.
 
 ## Пиксель-арт: правила, которые нельзя нарушать
 
@@ -55,20 +85,26 @@ global.ZV_KITS.runner = { createScenes: function (config) { return [new PlayScen
 наружу (скилл `embed`):
 ```js
 global.ZV.finish(scene, { score: 12, won: true, meta: {}, text: "препятствий" });
+// необязательно: title (свой заголовок), hideScore (без числа), prize (карточка),
+// outcome (исход словом: тип, id приза), replay: false (без «Ещё раз»)
 ```
 
 Киту доступно: `WIDTH`/`HEIGHT`, `PRIMARY`/`SECONDARY`, `FONT`,
-`ui.button/title/hint/backdrop/text`, `sprite.apply/playAnim`,
-`juice.squash/stretch/shadow/dust`, `floor`, `FLOOR_DEPTH`. Новый кит — добавь
-`<script>` в `index.html`, иначе `ZV_KITS` его не увидит.
+`ui.button/title/hint/backdrop/text`, `ui.choices` (столбик кнопок-вариантов
+с `set/color/centerOf`), `ui.fail`, `sprite.apply/playAnim`,
+`juice.squash/stretch/shadow/dust`, `floor`, `FLOOR_DEPTH`, `random`,
+`params`, `loadContent/content`, `prizes`. Новый кит — добавь `<script>` в
+`index.html` и имя архетипа в комментарий `config.js`, иначе тест не пропустит.
 
 ## config.js
 
-`title`, `archetype` (runner|catch|quiz), `brand` (name/primary/secondary/
-logoUrl) и `assets` (`hero` с frameWidth/frameHeight/frames/fps, `items`,
-`background` с `tile`). Поля расписаны комментариями в самом файле. Пустой
-`assets` — киты играют на заглушках, это рабочее состояние; как заказывать
-картинки и что класть в поля — скилл `assets`. `embed` не трогай.
+`title`, `archetype` (runner|catch|quiz|persona|wheel), `params` (баланс
+кита, ключи — README кита), `prize` (приз за победу), `brand`
+(name/primary/secondary/logoUrl) и `assets` (`hero` с
+frameWidth/frameHeight/frames/fps, `items`, `background` с `tile`). Поля
+расписаны комментариями в самом файле. Пустой `assets` — киты играют на
+заглушках, это рабочее состояние; как заказывать картинки и что класть в
+поля — скилл `assets`. `embed` не трогай.
 
 ## Подстановка картинки: только через ZV.sprite.apply
 
@@ -120,5 +156,8 @@ ZV.sprite.apply(this.hero, { anim: "run", scale: 1 });
 ## Проверка
 
 `node --test tests game` ловит битую ссылку, синтаксис JS, неизвестный
-архетип и упоминания платформы. Затем `python3 -m http.server 8080`, открыть `http://localhost:8080/`,
-проверить консоль — и сохранить код для превью на телефоне.
+архетип, битый `content/*.json`, нечестный баланс раннера, `Math.random` в
+китах и упоминания платформы. Затем `python3 -m http.server 8080`, открыть
+`http://localhost:8080/?seed=1`, проверить консоль — и сохранить код для
+превью на телефоне. Автопрогон в браузере (боты за эксперта и новичка) —
+`tests/e2e`, его гоняет CI шаблона.

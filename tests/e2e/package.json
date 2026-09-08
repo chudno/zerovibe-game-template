@@ -1,0 +1,11 @@
+{
+  "name": "game-template-e2e",
+  "private": true,
+  "description": "Headless-прогон китов в Chromium (Playwright). Живёт в tests/ — в публикацию не попадает, в рантайме игры зависимостей нет.",
+  "scripts": {
+    "test": "node --test *.e2e.js"
+  },
+  "devDependencies": {
+    "playwright": "1.57.0"
+  }
+}

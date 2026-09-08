@@ -14,7 +14,7 @@ const skills = fs.readdirSync(path.join(root, ".claude", "skills")).map((d) => p
 
 // Путь: сегменты через "/", без пробелов, начинается с известного каталога или
 // файла корня; шаблоны с <…>/** пропускаем, как и внешние адреса.
-const known = ["game/", "vendor/", "assets/", "tests/", "docs/", "index.html", ".claude/"];
+const known = ["game/", "vendor/", "assets/", "content/", "tests/", "docs/", "index.html", ".claude/"];
 function looksLikePath(s) {
   if (/[\s<>*{}$]/.test(s) || /^https?:/.test(s)) return false;
   return known.some((k) => s === k.replace(/\/$/, "") || s.startsWith(k));
