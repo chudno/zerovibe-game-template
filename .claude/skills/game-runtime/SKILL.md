@@ -6,14 +6,13 @@ description: Устройство шаблона игры — какой фай�
 # Устройство шаблона
 
 ```
-handler.go, assets.go, cmd/server/  обёртка и локальный запуск (не трогаешь)
-static/vendor/                      движок, локальная копия (НЕ трогаешь)
-static/index.html                   <div id="game"> + подключение скриптов
-static/game/style.css               стили вокруг канвы (image-rendering!)
-static/game/config.js               window.ZV_GAME — настройка и картинки
-static/game/shell.js                window.ZV: экраны, ui/sprite/juice/floor
-static/game/main.js                 берёт кит по config.archetype
-static/game/kits/<a>/               kit.js + README.md — механика архетипа
+vendor/                      движок, локальная копия (НЕ трогаешь)
+index.html                   <div id="game"> + подключение скриптов
+game/style.css               стили вокруг канвы (image-rendering!)
+game/config.js               window.ZV_GAME — настройка и картинки
+game/shell.js                window.ZV: экраны, ui/sprite/juice/floor
+game/main.js                 берёт кит по config.archetype
+game/kits/<a>/               kit.js + README.md — механика архетипа
 ```
 
 **Механику пишешь в `kits/<archetype>/kit.js`**, настройку заказа — в
@@ -120,6 +119,6 @@ ZV.sprite.apply(this.hero, { anim: "run", scale: 1 });
 
 ## Проверка
 
-`go build ./... && go test ./...` ловит битую ссылку, синтаксис JS, неизвестный
-архетип и упоминания платформы. Затем `go run ./cmd/server`, открыть `/`,
+`node --test tests game` ловит битую ссылку, синтаксис JS, неизвестный
+архетип и упоминания платформы. Затем `python3 -m http.server 8080`, открыть `http://localhost:8080/`,
 проверить консоль — и сохранить код для превью на телефоне.
