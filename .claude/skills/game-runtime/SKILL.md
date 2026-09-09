@@ -9,8 +9,8 @@ description: Устройство шаблона игры — какой фай�
 vendor/                      движок, локальная копия (НЕ трогаешь)
 index.html                   <div id="game"> + подключение скриптов
 game/style.css               стили вокруг канвы (image-rendering!)
-game/config.js               window.ZV_GAME — настройка: params, prize, картинки
-content/<kit>.json           тексты, призы, уровни и сюжет китов (quiz, persona, wheel, levels, novel, quest)
+game/config.js               window.ZV_GAME — настройка: params, theme, картинки, prize
+content/<kit>.json           тексты, исходы, уровни и сюжет китов (quiz, persona, wheel, levels, novel, quest)
 game/shell.js                window.ZV: экраны, ui/sprite/juice/floor/prizes
 game/fontdata.js + font.js   пиксельный шрифт: растр (генерируется) и метрики
 game/pixelfont.js            атлас шрифта → BitmapText
@@ -25,12 +25,12 @@ game/main.js                 берёт кит по config.archetype
 game/kits/<a>/               kit.js + README.md — механика архетипа
 ```
 
-**Баланс правишь в `config.params`, тексты — в `content/*.json`, картинки —
+**Сложность правишь в `config.params`, тексты — в `content/*.json`, картинки —
 в `config.assets`.** В `kits/<archetype>/kit.js` лезь только за новой
 механикой. `shell.js` и `index.html` трогай, только если задача правда про
 оболочку (новый экран, новое событие наружу), и после — тесты.
 
-## Случайность, параметры, контент, призы
+## Случайность, параметры, контент, приз
 
 - **`ZV.random`** — единственный источник случайности: `ZV.random()` 0..1,
   `.between(a, b)` целое включительно, `.chance(p)`, `.pick(list)`,
@@ -63,10 +63,11 @@ game/kits/<a>/               kit.js + README.md — механика архет�
   сахар над булевыми переменными). Сцену рисует `ZV_STAGE` (`game/stage.js`):
   `preload(scene, groups)`, `create(scene, {typeMs, onPanelTap, onPick})` →
   `setBackground/setPortrait/say/reveal/tick/showChoices/showNext/toast`.
-- **Призы**: `config.prize` `{title, code, text, button, url}` — карточка на
-  экране результата при `won`. Кит с призом внутри (розыгрыш, «какой ты»)
-  передаёт `prize` в `ZV.finish` сам. `ZV.prizes.pick(items)` — взвешенный
-  выбор. Веса призов подтверждает человек: это шанс выигрыша в акции.
+- **Приз** (необязательный слой, скилл `branding`): `config.prize`
+  `{title, code, text, button, url}` — карточка на экране результата при
+  `won`; пустой `title` — карточки нет. Кит с исходами внутри (розыгрыш,
+  «какой ты») передаёт `prize` в `ZV.finish` сам. `ZV.prizes.pick(items)` —
+  взвешенный выбор по `weight`. Веса подтверждает человек.
 
 ## Пиксель-арт: правила, которые нельзя нарушать
 
@@ -124,9 +125,10 @@ global.ZV.finish(scene, { score: 12, won: true, meta: {}, text: "препятс�
 
 ## config.js
 
-`title`, `archetype` (runner|catch|quiz|persona|wheel|platformer|novel|quest), `params` (баланс
-кита, ключи — README кита), `prize` (приз за победу), `brand`
-(name/primary/secondary/logoUrl) и `assets` (`hero` с
+`title`, `archetype` (runner|catch|quiz|persona|wheel|platformer|novel|quest),
+`params` (сложность кита, ключи — README кита), `theme`
+(name/primary/secondary/logoUrl — подпись над названием и два акцента),
+`prize` (приз, только у брендированной игры) и `assets` (`hero` с
 frameWidth/frameHeight/frames/fps, `items`, `background` с `tile`). Поля
 расписаны комментариями в самом файле. Пустой `assets` — киты играют на
 заглушках, это рабочее состояние; как заказывать картинки и что класть в

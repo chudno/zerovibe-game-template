@@ -1,4 +1,4 @@
-// Headless-прогон китов в Chromium: игра в iframe хоста (как у бренда), сид
+// Headless-прогон китов в Chromium: игра в iframe хоста (как на чужом сайте), сид
 // фиксирован, бот-эксперт обязан выиграть, бот-новичок — проиграть, за партию
 // ни ошибки консоли, ни нарушения инвариантов. Запуск: см. README в tests/e2e.
 "use strict";
@@ -448,5 +448,48 @@ test("шрифт: весь текст — BitmapText из атласа целы�
     assert.equal(res.texts, 0); assert.deepEqual(res.bad, []);
     assert.ok(res.bitmap >= 6, "на результате мало надписей: " + res.bitmap);
     clean(g);
+  } finally { await g.close(); }
+});
+
+// Логотип темы: картинка по ссылке, целым масштабом, на «Играть» вместо
+// подписи и мелко на «Результат»; битая ссылка не ломает игру.
+test("тема: логотип на «Играть» и «Результат» целым масштабом, битая ссылка — без него", async () => {
+  const shot = process.env.ZV_SHOTS;   // каталог для скриншотов приёмки, необязательно
+  const logos = (g, key) => g.scene((k) => {
+    const sc = window.ZV.game.scene.getScene(k);
+    return sc.children.list.filter((o) => o.type === "Image" && o.texture.key === "zv-logo")
+      .map((o) => ({ x: o.x, y: o.y, scale: o.scaleX, w: o.displayWidth, h: o.displayHeight }));
+  }, key);
+  const labels = (g, key) => g.scene((k) => window.ZV.game.scene.getScene(k).children.list
+    .filter((o) => o.type === "BitmapText").map((o) => o.text), key);
+  const toResult = (g) => g.scene(() => {
+    window.ZV.game.scene.getScene("zv-menu").scene.start("zv-result", { score: 5, won: true, meta: {} });
+  });
+  // 64×64: на «Играть» лимит 240×80 → масштаб 1; на «Результат» 160×48 → 1/2.
+  let g = await openGame(browser, server, { archetype: "runner", seed: 1,
+    theme: { name: "Студия", primary: "#4f7cff", secondary: "#ffd23f", logoUrl: "/tests/fixtures/house_a.png" } });
+  try {
+    const menu = await logos(g, "zv-menu");
+    assert.deepEqual(menu, [{ x: 180, y: 100, scale: 1, w: 64, h: 64 }]);
+    assert.ok(!(await labels(g, "zv-menu")).includes("Студия"), "при логотипе подпись темы лишняя");
+    if (shot) await g.page.screenshot({ path: path.join(shot, "logo-menu.png") });
+    await toResult(g);
+    await g.page.waitForTimeout(300);
+    const res = await logos(g, "zv-result");
+    assert.deepEqual(res, [{ x: 180, y: 100, scale: 0.5, w: 32, h: 32 }]);
+    if (shot) await g.page.screenshot({ path: path.join(shot, "logo-result.png") });
+    clean(g);
+  } finally { await g.close(); }
+  g = await openGame(browser, server, { archetype: "runner", seed: 1,
+    theme: { name: "Студия", primary: "#4f7cff", secondary: "#ffd23f", logoUrl: "/tests/fixtures/missing.png" } });
+  try {
+    assert.deepEqual(await logos(g, "zv-menu"), []);
+    assert.ok((await labels(g, "zv-menu")).includes("Студия"), "без логотипа подпись темы обязана вернуться");
+    await toResult(g);
+    await g.page.waitForTimeout(300);
+    assert.deepEqual(await logos(g, "zv-result"), []);
+    // Браузер честно пишет 404 по картинке в консоль — это и есть «битая
+    // ссылка»; ошибок самой игры быть не должно.
+    assert.deepEqual(g.errors.filter((e) => !/Failed to load resource/.test(e)), [], "ошибки страницы");
   } finally { await g.close(); }
 });

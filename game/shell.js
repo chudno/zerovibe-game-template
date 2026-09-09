@@ -17,9 +17,11 @@
   var FONT_KEY = global.ZV_PIXELFONT.KEY;
 
   var config = global.ZV_GAME || {};
-  var brand = config.brand || {};
-  var PRIMARY = brand.primary || "#4f7cff";
-  var SECONDARY = brand.secondary || "#ffd23f";
+  // Тема игры: название на первом экране и два акцента. config.brand — старое
+  // имя поля (проекты до 9 сент 2026), читается как запасное.
+  var theme = config.theme || config.brand || {};
+  var PRIMARY = theme.primary || "#4f7cff";
+  var SECONDARY = theme.secondary || "#ffd23f";
 
   // Перекрытия для автопрогона (tests/e2e): сид и параметры кита. В обычной
   // игре объекта нет.
@@ -624,10 +626,31 @@
   }
   BootScene.prototype = Object.create(Phaser.Scene.prototype);
   BootScene.prototype.constructor = BootScene;
+  BootScene.prototype.preload = function () {
+    // Логотип темы — картинка по ссылке из файлов проекта; битая ссылка не
+    // должна ронять игру: ошибка загрузки глотается, экраны идут без него.
+    if (theme.logoUrl) {
+      this.load.image("zv-logo", theme.logoUrl);
+      this.load.on("loaderror", function () {});
+    }
+  };
   BootScene.prototype.create = function () {
     global.ZV_PIXELFONT.install(this);
     this.scene.start("zv-menu");
   };
+
+  // Логотип целым масштабом (1/n при крупном файле, k при мелком), чтобы не
+  // мылить пиксели; вписывается в maxW×maxH, центр в (x, y). Нет текстуры —
+  // null, вызывающий ставит подпись theme.name как раньше.
+  function logo(scene, x, y, maxW, maxH) {
+    if (!scene.textures.exists("zv-logo")) return null;
+    var src = scene.textures.get("zv-logo").getSourceImage();
+    var w = src.width, h = src.height;
+    if (!w || !h) return null;
+    var k = Math.floor(Math.min(maxW / w, maxH / h));
+    var scale = k >= 1 ? k : 1 / Math.ceil(Math.max(w / maxW, h / maxH));
+    return scene.add.image(x, y, "zv-logo").setScale(scale).setDepth(1);
+  }
 
   // --- экран «Играть» ----------------------------------------------------
   function MenuScene() {
@@ -638,8 +661,8 @@
   MenuScene.prototype.create = function () {
     var self = this;
     ui.backdrop(this);
-    if (brand.name) {
-      label(this, WIDTH / 2, 100, brand.name, { size: 1, color: SECONDARY })
+    if (!logo(this, WIDTH / 2, 100, 240, 80) && theme.name) {
+      label(this, WIDTH / 2, 100, theme.name, { size: 1, color: SECONDARY })
         .setOrigin(0.5);
     }
     ui.title(this, WIDTH / 2, 190, config.title || "Игра", 32);
@@ -678,6 +701,8 @@
     var prize = r.prize && global.ZV_CONTENT.hasPrize(r.prize) ? r.prize : null;
     ui.backdrop(this);
     var y = prize ? 90 : 190;
+    // Логотип — над заголовком, мелко: экран результата занят итогом.
+    if (logo(this, WIDTH / 2, prize ? 40 : 100, 160, 48) && prize) y = 110;
     var t = ui.title(this, WIDTH / 2, y, r.title || (r.won ? "Победа" : "Раунд окончен"), prize ? 26 : 32);
     y += Math.max(t.height / 2, 20) + (prize ? 22 : 46);
     if (!r.hideScore) {
@@ -728,7 +753,7 @@
         pixelArt: true,
         roundPixels: true,
         antialias: false,
-        powerPreference: "low-power"   // промо-игра, батарея телефона важнее
+        powerPreference: "low-power"   // игра с телефона, батарея важнее кадров
       },
       scale: {
         mode: Phaser.Scale.FIT,

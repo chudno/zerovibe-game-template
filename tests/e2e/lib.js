@@ -1,5 +1,5 @@
 // Обвязка headless-прогона: статический сервер репозитория, страница-хост с
-// iframe (как у бренда), сбор событий встраивания и ошибок консоли, тестовые
+// iframe (как на чужом сайте), сбор событий встраивания и ошибок консоли, тестовые
 // перекрытия ZV_TEST (сид, параметры, архетип). Боты живут внутри страницы
 // (bots.js) — page.evaluate на каждый кадр не поспевает.
 "use strict";
@@ -35,8 +35,8 @@ function startServer() {
 
 const botsSource = fs.readFileSync(path.join(__dirname, "bots.js"), "utf8");
 
-// Открыть игру в iframe хоста. opts: { archetype, seed, params, prize, content,
-// levelsUnchecked }. content — подмена content/<kind>.json ответом (экран
+// Открыть игру в iframe хоста. opts: { archetype, seed, params, prize, theme,
+// content, levelsUnchecked }. content — подмена content/<kind>.json ответом (экран
 // ошибок, сгенерированные уровни); levelsUnchecked — не гонять солвер при
 // загрузке (заведомо непроходимые уровни для сверки с ботом).
 async function openGame(browser, server, opts) {
@@ -55,6 +55,7 @@ async function openGame(browser, server, opts) {
       set(v) {
         if (o.archetype) v.archetype = o.archetype;
         if (o.prize) v.prize = o.prize;
+        if (o.theme) v.theme = o.theme;
         stored = v;
       }
     });
