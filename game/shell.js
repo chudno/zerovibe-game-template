@@ -49,10 +49,12 @@
   function loadContent(scene, kind, url) {
     scene.load.json("zv-content-" + kind, url || ("content/" + kind + ".json"));
   }
-  function content(scene, kind) {
+  // opts — данные для валидатора (у платформера: физика, от которой зависит
+  // проходимость уровней).
+  function content(scene, kind, opts) {
     var data = scene.cache.json.get("zv-content-" + kind);
     if (!data) return { data: null, errors: ["content/" + kind + ".json не загрузился"] };
-    return { data: data, errors: global.ZV_CONTENT.validate(kind, data) };
+    return { data: data, errors: global.ZV_CONTENT.validate(kind, data, opts) };
   }
 
   var lastResult = { score: 0, won: false, meta: {} };
@@ -777,6 +779,16 @@
     loadContent: loadContent,
     content: content,
     prizes: prizes,
+
+    // Уровни платформера: разбор карты, солвер проходимости, исполнитель плана.
+    levels: global.ZV_LEVELS,
+
+    // Промежуточный прогресс многоэкранной игры (пройден уровень, глава):
+    // событие родителю, экран не меняется. p: { step, total, meta }.
+    progress: function (scene, p) {
+      p = p || {};
+      post("progress", { step: p.step || 0, total: p.total || 0, meta: p.meta || {} });
+    },
 
     // Кит зовёт это в конце раунда: событие родителю + экран результата.
     // result: { score, won, text, meta, title, hideScore, prize, outcome, replay }.

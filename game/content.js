@@ -50,7 +50,9 @@
     prizeText:   { width: 284, lines: 3, k: 1 },
     prizeButton: { width: 224, lines: 1, k: 2, kMin: 1 },
     sector:      { width: 76,  lines: 2, k: 1 },          // сектор колеса (≤8 секторов)
-    sectorSmall: { width: 56,  lines: 2, k: 1 }           // сектор колеса (9–12 секторов)
+    sectorSmall: { width: 56,  lines: 2, k: 1 },          // сектор колеса (9–12 секторов)
+    levelName:   { width: 300, lines: 2, k: 2, kMin: 1 }, // заставка уровня (заголовок)
+    levelHint:   { width: 290, lines: 2, k: 1 }           // подсказка под ней
   };
   var MAX_LEN = 240;   // страховка от абзацев там, где ждём строку
 
@@ -195,13 +197,33 @@
     return errs;
   }
 
-  var validators = { quiz: validateQuiz, persona: validatePersona, wheel: validateWheel };
+  // Уровни платформера: форма и ПРОХОДИМОСТЬ каждой карты (солвер в
+  // game/levels.js с физикой из opts.physics — кит передаёт свои params).
+  var LEVELS = (typeof module !== "undefined" && module.exports) ? require("./levels.js") : root.ZV_LEVELS;
+  function validateLevels(data, opts) {
+    var errs = [];
+    var list = data && data.levels;
+    if (!Array.isArray(list) || list.length < 1 || list.length > LEVELS.LIMITS.maxLevels) return ["levels: массив от 1 до " + LEVELS.LIMITS.maxLevels + " уровней"];
+    var phys = (opts && opts.physics) || LEVELS.PHYSICS;
+    list.forEach(function (lv, i) {
+      var w = "levels[" + i + "]";
+      if (!lv || typeof lv !== "object") { errs.push(w + ": объект {name, map}"); return; }
+      textErr(errs, w, lv.name, "name", "levelName");
+      if (lv.hint !== undefined && typeof lv.hint !== "string") errs.push(w + ": hint — строка");
+      else if (lv.hint) fitErr(errs, w, lv.hint, "hint", "levelHint");
+      var v = LEVELS.validateLevel(lv.map, phys, w + ".map", { unchecked: !!(opts && opts.unchecked) });
+      for (var k = 0; k < v.errors.length; k++) errs.push(v.errors[k]);
+    });
+    return errs;
+  }
 
-  function validate(kind, data) {
+  var validators = { quiz: validateQuiz, persona: validatePersona, wheel: validateWheel, levels: validateLevels };
+
+  function validate(kind, data, opts) {
     var fn = validators[kind];
     if (!fn) return ["неизвестный вид контента «" + kind + "»"];
     if (!data || typeof data !== "object") return [kind + ": ожидается объект JSON"];
-    return fn(data);
+    return fn(data, opts);
   }
 
   var api = {

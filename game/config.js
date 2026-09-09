@@ -4,8 +4,8 @@ window.ZV_GAME = {
   // Заголовок на первом экране.
   title: "Название игры",
 
-  // Архетип: "runner" | "catch" | "quiz" | "persona" | "wheel". Выбирает кит
-  // в game/kits/. Описание и параметры каждого — game/kits/<archetype>/README.md.
+  // Архетип: "runner" | "catch" | "quiz" | "persona" | "wheel" | "platformer".
+  // Выбирает кит в game/kits/. Описание и параметры — game/kits/<archetype>/README.md.
   archetype: "runner",
 
   // Баланс кита: ключи и значения по умолчанию — в README кита (и в его
@@ -27,8 +27,8 @@ window.ZV_GAME = {
     logoUrl: ""            // ссылка на файл проекта; пусто — логотипа нет
   },
 
-  // Тексты (вопросы, типы, призы розыгрыша) — не здесь, а в content/*.json:
-  // quiz.json, persona.json, wheel.json. Формат — в README кита.
+  // Тексты и уровни (вопросы, типы, призы розыгрыша, карты платформера) — не
+  // здесь, а в content/*.json: quiz, persona, wheel, levels. Формат — README кита.
 
   // Картинки. Пусто — кит рисует серые заглушки и играется как есть.
   // Числа берутся ИЗ ОТВЕТА asset_generate (frame_width/frame_height/cols),
@@ -39,7 +39,8 @@ window.ZV_GAME = {
     hero: { url: "", frameWidth: 0, frameHeight: 0, frames: 0, fps: 10 },
 
     // Предметы. Ключи разные у китов: runner — block/blockTall/ground,
-    // catch — basket/good/bad, wheel (lootbox) — box/boxOpen. Каждый: { url: "" }.
+    // catch — basket/good/bad, wheel (lootbox) — box/boxOpen,
+    // platformer — ground/coin/spike/exit. Каждый: { url: "" }.
     items: {},
 
     // Фон. tile: true — только если стороны текстуры 64/128/256 (иначе

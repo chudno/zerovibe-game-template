@@ -35,8 +35,10 @@ function startServer() {
 
 const botsSource = fs.readFileSync(path.join(__dirname, "bots.js"), "utf8");
 
-// Открыть игру в iframe хоста. opts: { archetype, seed, params, prize, content }.
-// content — подмена content/<kind>.json ответом (для проверки экрана ошибок).
+// Открыть игру в iframe хоста. opts: { archetype, seed, params, prize, content,
+// levelsUnchecked }. content — подмена content/<kind>.json ответом (экран
+// ошибок, сгенерированные уровни); levelsUnchecked — не гонять солвер при
+// загрузке (заведомо непроходимые уровни для сверки с ботом).
 async function openGame(browser, server, opts) {
   const context = await browser.newContext({ viewport: { width: 360, height: 640 }, deviceScaleFactor: 1 });
   const errors = [];
@@ -45,7 +47,7 @@ async function openGame(browser, server, opts) {
   page.on("console", (m) => { if (m.type() === "error") errors.push("console: " + m.text()); });
   // Перекрытия: config.js делает window.ZV_GAME = {…} — перехватываем присваивание.
   await page.addInitScript((o) => {
-    window.ZV_TEST = { seed: o.seed, params: o.params || {} };
+    window.ZV_TEST = { seed: o.seed, params: o.params || {}, levelsUnchecked: !!o.levelsUnchecked };
     let stored;
     Object.defineProperty(window, "ZV_GAME", {
       configurable: true,

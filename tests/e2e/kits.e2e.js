@@ -7,6 +7,8 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const { startServer, openGame, launchBrowser } = require("./lib.js");
+const L = require("../../game/levels.js");
+const levelgen = require("../levelgen.js");
 
 const content = (name) => JSON.parse(fs.readFileSync(path.join(__dirname, "..", "..", "content", name), "utf8"));
 
@@ -190,6 +192,79 @@ test("wheel: три подачи выдают приз из списка с не
     check(fin); assert.equal(fin.meta.presentation, "lootbox");
     clean(g);
   } finally { await g.close(); }
+});
+
+test("platformer: эксперт по плану солвера проходит все уровни content/levels.json, progress на каждый, победа", async () => {
+  const data = content("levels.json");
+  const plans = data.levels.map((lv) => {
+    const v = L.validateLevel(lv.map);
+    assert.deepEqual(v.errors, [], lv.name);
+    return v.solved.plan;
+  });
+  const g = await openGame(browser, server, { archetype: "platformer", seed: 1, params: { lives: 1 } });
+  try {
+    const m = await g.mark();
+    await g.play();
+    await g.bot("platformer", "expert", { plans });
+    const fin = await g.waitFinish(m, 120000);
+    const rep = await g.botReport();
+    assert.ok(fin.won, JSON.stringify({ fin, rep }));
+    assert.equal(fin.meta.archetype, "platformer");
+    assert.equal(fin.meta.levels, data.levels.length);
+    const progress = (await g.events()).slice(m).filter((e) => e.type === "progress");
+    assert.deepEqual(progress.map((e) => e.step), data.levels.map((_, i) => i + 1));
+    assert.equal(progress[0].total, data.levels.length);
+    assert.ok(rep.jumps >= data.levels.length, JSON.stringify(rep));
+    clean(g, rep);
+  } finally { await g.close(); }
+});
+
+test("platformer: новичок со случайным вводом за 20 с не выигрывает, ошибок и нарушений нет", async () => {
+  const g = await openGame(browser, server, { archetype: "platformer", seed: 4 });
+  try {
+    const m = await g.mark();
+    await g.play();
+    await g.bot("platformer", "novice");
+    await g.page.waitForTimeout(20000);
+    const fins = (await g.events()).slice(m).filter((e) => e.type === "finish");
+    assert.ok(fins.every((f) => !f.won), JSON.stringify(fins));
+    clean(g, await g.botReport());
+  } finally { await g.close(); }
+});
+
+test("сверка солвера с ботом: «проходим» — бот доходит, «непроходим» — нет", async () => {
+  const suite = levelgen.suite(8, 1);
+  assert.equal(suite.solvable.length, 8);
+  // Проходимые: одной партией, все уровни подряд, одна жизнь.
+  const g = await openGame(browser, server, {
+    archetype: "platformer", seed: 2, params: { lives: 1 },
+    content: { levels: { levels: suite.solvable.map((s) => s.level) } }
+  });
+  try {
+    const m = await g.mark();
+    await g.play();
+    await g.bot("platformer", "expert", { plans: suite.solvable.map((s) => s.plan) });
+    const fin = await g.waitFinish(m, 240000);
+    const rep = await g.botReport();
+    assert.ok(fin.won && fin.meta.levels === 8, "сиды " + suite.solvable.map((s) => s.seed).join(",") + ": " + JSON.stringify({ fin, rep }));
+    clean(g, rep);
+  } finally { await g.close(); }
+  // Непроходимые конструкции: жадный бот бежит и прыгает 8 с — выхода нет.
+  for (const u of suite.unsolvable) {
+    const n = await openGame(browser, server, {
+      archetype: "platformer", seed: 3, params: { lives: 9 }, levelsUnchecked: true,
+      content: { levels: { levels: [u.level] } }
+    });
+    try {
+      const m = await n.mark();
+      await n.play();
+      await n.bot("platformer", "greedy");
+      await n.page.waitForTimeout(8000);
+      const evs = (await n.events()).slice(m);
+      assert.ok(!evs.some((e) => e.type === "progress" || (e.type === "finish" && e.won)), u.kind + ": " + JSON.stringify(evs));
+      clean(n, await n.botReport());
+    } finally { await n.close(); }
+  }
 });
 
 test("битый контент — экран ошибки и событие error, а не белая страница", async () => {

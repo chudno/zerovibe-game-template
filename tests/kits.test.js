@@ -14,7 +14,9 @@ const kitsDir = path.join(root, "game", "kits");
 const kitNames = fs.readdirSync(kitsDir).filter((d) => fs.existsSync(path.join(kitsDir, d, "kit.js")));
 
 // Кит грузится в песочнице с заглушкой Phaser: при загрузке ему нужны только
-// Phaser.Scene.prototype и window.
+// Phaser.Scene.prototype, window и чистые модули game/*.js (index.html
+// подключает их раньше китов).
+const PURE = ["fontdata.js", "font.js", "layout.js", "random.js", "levels.js", "content.js"];
 function loadKit(name) {
   const src = fs.readFileSync(path.join(kitsDir, name, "kit.js"), "utf8");
   const window = { ZV_KITS: {}, ZV_GAME: {} };
@@ -23,12 +25,13 @@ function loadKit(name) {
     Phaser: { Scene: function Scene() {}, Display: {}, Math: {}, Animations: { Events: {} } },
     console
   });
+  for (const f of PURE) vm.runInContext(fs.readFileSync(path.join(root, "game", f), "utf8"), ctx, { filename: "game/" + f });
   vm.runInContext(src, ctx, { filename: name + "/kit.js" });
   return { kit: window.ZV_KITS[name], src };
 }
 
-test("китов не меньше пяти", () => {
-  assert.ok(kitNames.length >= 5, kitNames.join(", "));
+test("китов не меньше шести", () => {
+  assert.ok(kitNames.length >= 6, kitNames.join(", "));
 });
 
 for (const name of kitNames) {

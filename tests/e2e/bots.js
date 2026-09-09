@@ -56,6 +56,42 @@
       }
     },
 
+    // Платформер: эксперт ведёт героя по плану солвера тем же исполнителем,
+    // что и симулятор (ZV.levels.follower) — так проверяется, что физика
+    // солвера и движка совпадают. Новичок жмёт случайно, greedy бежит вправо
+    // и прыгает (для заведомо непроходимых уровней).
+    platformer: function (sc, now) {
+      var hero = sc.hero, body = hero && hero.body;
+      if (!body || !sc.level) return;
+      if (!finite(hero.x) || !finite(hero.y)) violation("координаты героя не число");
+      if (hero.x < -5 || hero.x > sc.level.W + 5) violation("герой вне уровня по x");
+      if (typeof sc.score === "number" && (!finite(sc.score) || sc.score < 0)) violation("счёт отрицательный или не число");
+      var down = body.blocked.down || body.touching.down;
+      if (sc.frozen || !body.enable) state.groundTs = now;
+      else if (down) state.groundTs = now;
+      else if (state.groundTs && now - state.groundTs > 1500) violation("герой 1.5 с не касался земли — висит или провалился");
+      if (sc.frozen || !body.enable) { sc.botPad = { dir: 0, jump: false }; return; }
+      var s = { x: body.x, y: body.y - sc.levelY0, vx: body.velocity.x, down: down };
+      if (state.mode === "novice") {
+        if (state.frames % 20 === 0) state.pad = { dir: global.ZV.random.between(-1, 1), jump: global.ZV.random.chance(0.3) };
+        sc.botPad = state.pad;
+        return;
+      }
+      if (state.mode === "greedy") {
+        sc.botPad = { dir: 1, jump: down && (state.frames % 40 === 0 || (body.blocked.right && state.frames % 12 === 0)) };
+        return;
+      }
+      // Эксперт: новый исполнитель на каждый уровень и каждое возрождение.
+      var key = sc.levelIndex + ":" + sc.spawnCount;
+      if (state.followKey !== key) {
+        state.followKey = key;
+        state.follower = global.ZV.levels.follower((state.plans || [])[sc.levelIndex] || []);
+      }
+      var d = state.follower.decide(s);
+      if (d.jump) state.jumps++;
+      sc.botPad = { dir: d.dir, jump: d.jump };
+    },
+
     catch: function (sc, now) {
       checkBodies(sc, now);
       if (state.mode === "novice") return;   // корзина стоит — промахи копятся
@@ -89,6 +125,8 @@
       opts = opts || {};
       state.kind = kind; state.mode = mode || "expert";
       state.stopAt = typeof opts.stopAt === "number" ? opts.stopAt : Infinity;
+      state.plans = opts.plans || null;
+      state.followKey = ""; state.follower = null; state.pad = { dir: 0, jump: false };
       state.frames = 0; state.violations = []; state.groundTs = 0; state.jumps = 0; state.stopped = false;
       var game = global.ZV && global.ZV.game;
       if (!game) throw new Error("ZV.game ещё нет");
