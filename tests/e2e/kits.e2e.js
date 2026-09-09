@@ -306,6 +306,13 @@ test("novel: каждая концовка достижима мышью по п
       const progress = (await g.events()).slice(m).filter((e) => e.type === "progress");
       assert.ok(progress.length >= 1 && progress[0].step === 1 && progress[0].total === 3, JSON.stringify(progress));
       clean(g);
+      // «Ещё раз» — сцена переиспользуется, второй create() не должен падать.
+      await g.page.waitForTimeout(300);
+      await g.expect("start", () => g.tap(180, 430));
+      await g.page.waitForTimeout(300);
+      const again = await g.scene(() => window.__zvBot.novel());
+      assert.ok(again && again.id === data.start, "после «Ещё раз» сюжет с начала: " + JSON.stringify(again));
+      clean(g);
     } finally { await g.close(); }
   }
   // Печать по буквам: сразу после старта текст не полный, тап показывает целиком и открывает варианты.
@@ -323,6 +330,48 @@ test("novel: каждая концовка достижима мышью по п
     assert.equal(st2.choices, 2);
     clean(t);
   } finally { await t.close(); }
+});
+
+test("quest: каждая концовка достижима, инвентарь на полке совпадает с графом, finish несёт предметы", async () => {
+  const data = content("quest.json");
+  const paths = NOVEL.paths(data);
+  assert.deepEqual(Object.keys(paths).sort(), ["delivered", "late", "unpaid"]);
+  for (const outcome of Object.keys(paths)) {
+    const g = await openGame(browser, server, { archetype: "quest", seed: 1, params: { typeMs: 0 } });
+    try {
+      const m = await g.mark();
+      await g.play();
+      await playNovel(g, paths[outcome]);
+      const fin = await g.waitFinish(m, 10000);
+      assert.equal(fin.outcome, outcome);
+      assert.equal(fin.meta.archetype, "quest");
+      assert.ok(Array.isArray(fin.meta.items), JSON.stringify(fin.meta));
+      if (outcome === "delivered") assert.ok(fin.meta.items.includes("stamp"), "печать должна быть в руках: " + JSON.stringify(fin.meta.items));
+      clean(g);
+      await g.page.waitForTimeout(300);
+      await g.expect("start", () => g.tap(180, 430));
+      await g.page.waitForTimeout(300);
+      const again = await g.scene(() => window.__zvBot.novel());
+      assert.ok(again && again.id === data.start && again.items.length === 0, "после «Ещё раз» квест с начала и без предметов: " + JSON.stringify(again));
+      clean(g);
+    } finally { await g.close(); }
+  }
+  // Полка: после получения пропуска ячейка закрашена, счётчик 1/3.
+  const g = await openGame(browser, server, { archetype: "quest", seed: 1, params: { typeMs: 0 } });
+  try {
+    await g.play();
+    await g.page.waitForTimeout(200);
+    await g.tap(180, 468);              // «Оформить пропуск на стойке»
+    await g.page.waitForTimeout(400);
+    const st = await g.scene(() => window.__zvBot.novel());
+    assert.deepEqual(st.items, ["pass"]);
+    const shelf = await g.scene(() => {
+      const sc = window.ZV.game.scene.getScene("zv-play");
+      return { text: sc.itemsText.text, passOn: sc.slots.pass.box.fillColor !== 0x1b1f33, keyOn: sc.slots.key.box.fillColor !== 0x1b1f33 };
+    });
+    assert.deepEqual(shelf, { text: "1/3", passOn: true, keyOn: false });
+    clean(g);
+  } finally { await g.close(); }
 });
 
 test("битый контент — экран ошибки и событие error, а не белая страница", async () => {

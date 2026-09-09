@@ -57,7 +57,8 @@
     novelText:   { width: 312, lines: 5, k: 1 },          // реплика в панели новеллы
     novelChoice: { width: 270, lines: 2, k: 1 },          // вариант ответа (кнопка 40 px: 1 строка кеглем 2 или 2 кеглем 1)
     endTitle:    { width: 300, lines: 2, k: 2 },          // заголовок концовки
-    endText:     { width: 290, lines: 4, k: 1 }           // описание концовки
+    endText:     { width: 290, lines: 4, k: 1 },          // описание концовки
+    itemTitle:   { width: 260, lines: 1, k: 1 }           // название предмета в инвентаре и тосте
   };
   var MAX_LEN = 240;   // страховка от абзацев там, где ждём строку
 
@@ -251,7 +252,17 @@
     return NOVEL.check(data);
   }
 
-  var validators = { quiz: validateQuiz, persona: validatePersona, wheel: validateWheel, levels: validateLevels, novel: validateNovel };
+  // Квест: новелла + предметы (items с названиями, give/take/needs).
+  function validateQuest(data) {
+    var errs = NOVEL.checkItems(data);
+    if (errs.length) return errs;
+    if (!data.items || !Object.keys(data.items).length) return ["items: у квеста должен быть хотя бы один предмет — иначе это новелла"];
+    Object.keys(data.items).forEach(function (k) { textErr(errs, "items." + k, data.items[k].title, "title", "itemTitle"); });
+    if (errs.length) return errs;
+    return validateNovel(data);
+  }
+
+  var validators = { quiz: validateQuiz, persona: validatePersona, wheel: validateWheel, levels: validateLevels, novel: validateNovel, quest: validateQuest };
 
   function validate(kind, data, opts) {
     var fn = validators[kind];

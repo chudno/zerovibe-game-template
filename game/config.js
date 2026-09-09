@@ -5,7 +5,7 @@ window.ZV_GAME = {
   title: "Название игры",
 
   // Архетип: "runner" | "catch" | "quiz" | "persona" | "wheel" | "platformer" |
-  // "novel". Выбирает кит в game/kits/. Описание и параметры —
+  // "novel" | "quest". Выбирает кит в game/kits/. Описание и параметры —
   // game/kits/<archetype>/README.md.
   archetype: "runner",
 
@@ -29,8 +29,8 @@ window.ZV_GAME = {
   },
 
   // Тексты, уровни и сюжет (вопросы, типы, призы розыгрыша, карты платформера,
-  // граф новеллы) — не здесь, а в content/*.json: quiz, persona, wheel, levels,
-  // novel. Формат — README кита.
+  // граф новеллы и квеста) — не здесь, а в content/*.json: quiz, persona,
+  // wheel, levels, novel, quest. Формат — README кита.
 
   // Картинки. Пусто — кит рисует серые заглушки и играется как есть.
   // Числа берутся ИЗ ОТВЕТА asset_generate (frame_width/frame_height/cols),
@@ -42,15 +42,16 @@ window.ZV_GAME = {
 
     // Предметы. Ключи разные у китов: runner — block/blockTall/ground,
     // catch — basket/good/bad, wheel (lootbox) — box/boxOpen,
-    // platformer — ground/coin/spike/exit. Каждый: { url: "" }.
+    // platformer — ground/coin/spike/exit, quest — иконки предметов по
+    // ключу icon из content/quest.json. Каждый: { url: "" }.
     items: {},
 
     // Фон. tile: true — только если стороны текстуры 64/128/256 (иначе
     // WebGL сглаживает её вопреки pixelArt); иначе обычная картинка.
     background: { url: "", tile: false },
 
-    // Новелла: фоны и портреты по ключам из content/novel.json (node.bg,
-    // node.portrait). Каждый: { url: "" }. Пусто — заглушки.
+    // Новелла и квест: фоны и портреты по ключам из content/novel.json или
+    // content/quest.json (node.bg, node.portrait). Каждый: { url: "" }. Пусто — заглушки.
     backgrounds: {},
     portraits: {}
   },

@@ -145,7 +145,8 @@
       var sc = global.ZV.game.scene.getScene("zv-play");
       if (!sc || !sc.sys.isActive() || !sc.rt) return null;
       return { id: sc.rt.id(), typing: sc.typing, linear: sc.rt.linear(), ended: !!sc.rt.ended(),
-        choices: sc.typing ? 0 : sc.rt.choices().length, vars: sc.rt.vars, over: sc.over };
+        choices: sc.typing ? 0 : sc.rt.choices().length, vars: sc.rt.vars, over: sc.over,
+        items: sc.rt.inventory ? sc.rt.inventory() : [] };
     },
 
     // Состояние игровой сцены для тестов, которые управляют мышью снаружи.

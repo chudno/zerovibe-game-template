@@ -8,7 +8,9 @@
 (function (root) {
   "use strict";
 
-  var LIMITS = { maxNodes: 300, choicesMin: 2, choicesMax: 4, maxStates: 20000, maxHistory: 500 };
+  // maxItems 8 — столько ячеек влезает в полку квеста рядом со счётчиком;
+  // maxStates — потолок обхода узел × переменные (у 8 предметов 256 наборов).
+  var LIMITS = { maxNodes: 300, choicesMin: 2, choicesMax: 4, maxStates: 60000, maxHistory: 500, maxItems: 8 };
   var ID_RE = /^[a-z0-9_-]{1,32}$/;
 
   function isObj(v) { return !!v && typeof v === "object" && !Array.isArray(v); }
@@ -49,9 +51,93 @@
     return out;
   }
 
+  // --- предметы (квест) --------------------------------------------------------
+  // items: { key: { title, icon? } } — инвентарь. На узле и варианте give/take
+  // [key…], на варианте needs [key…] (у узла ворот нет — needs там ошибка).
+  // Это сахар над булевыми переменными «item:<key>»: withItems переписывает
+  // данные в set/if, и весь граф-чек, обход и рантайм работают без изменений.
+  // Автору такие имена недоступны: ID_RE без двоеточия.
+  var ITEM_PREFIX = "item:";
+  function itemVar(key) { return ITEM_PREFIX + key; }
+  function itemVars(data) {
+    var out = {};
+    if (isObj(data) && isObj(data.items)) Object.keys(data.items).forEach(function (k) { out[itemVar(k)] = true; });
+    return out;
+  }
+
+  function checkItems(data) {
+    var errs = [];
+    if (data.items === undefined) return errs;
+    if (!isObj(data.items)) return ["items: объект {ключ: {title}}"];
+    var keys = Object.keys(data.items);
+    if (keys.length > LIMITS.maxItems) errs.push("items: не больше " + LIMITS.maxItems + " предметов — больше не влезает в полку");
+    keys.forEach(function (k) {
+      var it = data.items[k];
+      if (!ID_RE.test(k)) errs.push("items: ключ «" + k + "» — латиница/цифры/-/_ до 32");
+      if (!isObj(it)) { errs.push("items." + k + ": объект {title}"); return; }
+      if (it.icon !== undefined && !/^[a-z0-9_:-]{1,32}$/.test(String(it.icon))) errs.push("items." + k + ".icon: ключ картинки — латиница/цифры/-/_/: до 32");
+    });
+    var given = {};
+    function checkRefs(owner, where, isChoice) {
+      if (!isChoice && owner.needs !== undefined) errs.push(where + ".needs: needs бывает только на варианте — у узла ворот нет");
+      ["give", "take", "needs"].forEach(function (f) {
+        if (owner[f] === undefined) return;
+        if (!Array.isArray(owner[f])) { errs.push(where + "." + f + ": массив ключей предметов"); return; }
+        owner[f].forEach(function (k) {
+          if (!has(data.items, k)) errs.push(where + "." + f + ": предмета «" + k + "» нет в items");
+          else if (f === "give") given[k] = true;
+        });
+      });
+    }
+    if (isObj(data.nodes)) {
+      Object.keys(data.nodes).forEach(function (id) {
+        var n = data.nodes[id];
+        if (!isObj(n)) return;
+        checkRefs(n, "nodes." + id, false);
+        if (Array.isArray(n.choices)) n.choices.forEach(function (c, i) { if (isObj(c)) checkRefs(c, "nodes." + id + ".choices[" + i + "]", true); });
+      });
+    }
+    keys.forEach(function (k) { if (!given[k]) errs.push("items." + k + ": предмет нигде не выдаётся (нет give)"); });
+    return errs;
+  }
+
+  // Копия данных, где предметы стали переменными: give → set true,
+  // take → set false, needs (только на варианте) → if true. Без items
+  // возвращает данные как есть.
+  function withItems(data) {
+    if (!isObj(data) || !isObj(data.items) || !isObj(data.nodes)) return data;
+    var out = { start: data.start, chapters: data.chapters, items: data.items, vars: copyVars(isObj(data.vars) ? data.vars : {}), nodes: {} };
+    Object.keys(data.items).forEach(function (k) { out.vars[itemVar(k)] = false; });
+    function fold(owner, isChoice) {
+      var o = {};
+      for (var k in owner) if (has(owner, k)) o[k] = owner[k];
+      if (Array.isArray(owner.give) || Array.isArray(owner.take)) {
+        o.set = isObj(owner.set) ? copyVars(owner.set) : {};
+        (owner.give || []).forEach(function (k) { o.set[itemVar(k)] = true; });
+        (owner.take || []).forEach(function (k) { o.set[itemVar(k)] = false; });
+      }
+      if (isChoice && Array.isArray(owner.needs)) {
+        o["if"] = isObj(owner["if"]) ? copyVars(owner["if"]) : {};
+        owner.needs.forEach(function (k) { o["if"][itemVar(k)] = true; });
+      }
+      return o;
+    }
+    Object.keys(data.nodes).forEach(function (id) {
+      var n = data.nodes[id];
+      if (!isObj(n)) { out.nodes[id] = n; return; }
+      var m = fold(n, false);
+      if (Array.isArray(n.choices)) m.choices = n.choices.map(function (c) { return isObj(c) ? fold(c, true) : c; });
+      out.nodes[id] = m;
+    });
+    return out;
+  }
+
   // --- проверка формы ----------------------------------------------------------
   // Тексты (длины под канву) проверяет content.js; здесь структура и граф.
-  function checkShape(data) {
+  // synthetic — служебные переменные предметов, добавленные withItems: только
+  // им разрешено имя с двоеточием.
+  function checkShape(data, synthetic) {
+    synthetic = synthetic || {};
     var errs = [];
     if (!isObj(data)) return ["novel: ожидается объект {start, nodes}"];
     var nodes = data.nodes;
@@ -63,6 +149,7 @@
     if (data.vars !== undefined && !isObj(data.vars)) errs.push("vars: объект {имя: число|булево}");
     for (var vk in vars) {
       if (!has(vars, vk)) continue;
+      if (synthetic[vk]) continue;
       if (!ID_RE.test(vk)) errs.push("vars: имя «" + vk + "» — латиница/цифры/-/_ до 32");
       if (typeof vars[vk] !== "number" && typeof vars[vk] !== "boolean") errs.push("vars." + vk + ": число или булево");
     }
@@ -127,15 +214,17 @@
 
   // --- обход по состояниям -----------------------------------------------------
   // Состояние = узел + значения переменных. Возвращает достижимые узлы,
-  // концовки, показанные условные варианты и ловушки (состояния без пути к
-  // концовке). При взрыве состояний (> maxStates) — обход по узлам без условий.
+  // концовки, показанные условные варианты, узлы без единого видимого варианта
+  // (blank) и ловушки (состояния без пути к концовке). При взрыве состояний
+  // (> maxStates) обход обрывается и результат неполон: check сообщает только
+  // об этом.
   function explore(data) {
     var nodes = data.nodes;
     var initVars = copyVars(isObj(data.vars) ? data.vars : {});
     var keyOf = function (id, vars) { return id + "|" + JSON.stringify(vars); };
     var seen = {}, order = [], edges = {}, parents = {};
     var queue = [];
-    var reachedNodes = {}, endings = {}, shownChoices = {}, overflow = false;
+    var reachedNodes = {}, endings = {}, shownChoices = {}, blank = {}, overflow = false;
 
     function enter(id, vars, from, choiceIdx) {
       var v = applyEffects(copyVars(vars), nodes[id]);
@@ -165,6 +254,7 @@
         enter(c.goto, v2, key, visibleIdx);
         visibleIdx++;
       }
+      if (visibleIdx === 0) blank[st.id] = true;   // игрок увидит узел без кнопок
     }
     // Ловушки: состояния, из которых концовка недостижима (обратный обход).
     var traps = [];
@@ -181,35 +271,54 @@
       var trapNodes = {};
       order.forEach(function (k3) { if (!canEnd[k3] && !trapNodes[seen[k3].id]) { trapNodes[seen[k3].id] = true; traps.push(seen[k3].id); } });
     }
-    return { nodes: reachedNodes, endings: endings, shown: shownChoices, traps: traps, overflow: overflow, states: order.length, seen: seen, parents: parents };
+    return { nodes: reachedNodes, endings: endings, shown: shownChoices, blank: blank, traps: traps, overflow: overflow, states: order.length, seen: seen, parents: parents };
   }
 
-  // Полная проверка: форма + граф. Возвращает массив строк-ошибок.
-  function check(data) {
-    var errs = checkShape(data);
+  // Полная проверка: предметы, форма, граф. Возвращает массив строк-ошибок.
+  function check(raw) {
+    var errs = checkItems(raw);
+    if (errs.length) return errs;
+    var data = withItems(raw);
+    errs = checkShape(data, itemVars(raw));
     if (errs.length) return errs;
     var ex = explore(data);
     var nodes = data.nodes;
+    if (ex.overflow) {
+      // Обход неполон — выводы о достижимости были бы ложью.
+      var nItems = isObj(raw.items) ? Object.keys(raw.items).length : 0;
+      var nVars = Object.keys(isObj(raw.vars) ? raw.vars : {}).length;
+      return ["сюжет слишком ветвист по переменным (больше " + LIMITS.maxStates + " состояний: " +
+        nItems + " предметов, " + nVars + " переменных) — упрости: меньше независимых предметов и счётчиков"];
+    }
     Object.keys(nodes).forEach(function (id) {
       if (!ex.nodes[id]) errs.push("nodes." + id + ": недостижим от start");
+    });
+    Object.keys(ex.blank).forEach(function (id) {
+      errs.push("nodes." + id + ": при каком-то наборе предметов/переменных не показывается ни один вариант — оставь вариант без needs/if");
     });
     if (Object.keys(ex.endings).length < 2) errs.push("концовок меньше двух — это не новелла (нужно ≥ 2 разных end.outcome, достижимых от start)");
     Object.keys(nodes).forEach(function (id) {
       var n = nodes[id];
       if (!Array.isArray(n.choices) || !ex.nodes[id]) return;
       n.choices.forEach(function (c, i) {
-        if (c["if"] !== undefined && !ex.shown[id + ":" + i]) errs.push("nodes." + id + ".choices[" + i + "]: условие никогда не выполняется — вариант не показывается");
+        if (c["if"] !== undefined && !ex.shown[id + ":" + i]) {
+          var rawC = raw.nodes[id].choices[i];
+          errs.push("nodes." + id + ".choices[" + i + "]: " + (Array.isArray(rawC.needs)
+            ? "предмет для этого варианта нельзя получить раньше — вариант не показывается"
+            : "условие никогда не выполняется — вариант не показывается"));
+        }
       });
     });
-    ex.traps.forEach(function (id) { errs.push("nodes." + id + ": из него нет пути к концовке (ловушка)"); });
-    if (ex.overflow) errs.push("сюжет слишком ветвист по переменным (> " + LIMITS.maxStates + " состояний) — упрости переменные");
+    ex.traps.forEach(function (id) {
+      if (!ex.blank[id]) errs.push("nodes." + id + ": из него нет пути к концовке (ловушка)");
+    });
     return errs;
   }
 
   // Пути до каждой концовки: { outcome: [индекс видимого варианта, …] } —
   // индексы только для узлов с выбором, линейные проходятся «дальше».
-  function paths(data) {
-    var ex = explore(data), out = {};
+  function paths(raw) {
+    var ex = explore(withItems(raw)), out = {};
     Object.keys(ex.endings).forEach(function (outcome) {
       var steps = [], key = ex.endings[outcome];
       while (ex.parents[key]) {
@@ -226,9 +335,24 @@
   // create(data) → { id(), node(), choices() [{index, text, goto}], choose(i),
   // next(), ended(), vars, history, state(), load(state) }. Эффекты узла
   // применяются при входе, варианта — при выборе.
-  function create(data) {
+  function create(raw) {
+    var data = withItems(raw);
     var nodes = data.nodes;
-    var rt = { vars: copyVars(isObj(data.vars) ? data.vars : {}), history: [], current: null };
+    var rt = { vars: copyVars(isObj(data.vars) ? data.vars : {}), history: [], current: null, items: null };
+    var itemKeys = isObj(raw.items) ? Object.keys(raw.items) : [];
+    // Предметы в руках — по служебным переменным; порядок как в items.
+    rt.inventory = function () {
+      return itemKeys.filter(function (k) { return rt.vars[itemVar(k)] === true; });
+    };
+    rt.item = function (k) { return isObj(raw.items) ? raw.items[k] : undefined; };
+    // Что выдал/забрал вход в узел или выбор (для тоста): разница инвентаря.
+    function diff(before) {
+      var after = rt.inventory();
+      return {
+        gained: after.filter(function (k) { return before.indexOf(k) < 0; }),
+        lost: before.filter(function (k) { return after.indexOf(k) < 0; })
+      };
+    }
     function enter(id) {
       rt.current = id;
       applyEffects(rt.vars, nodes[id]);
@@ -251,14 +375,18 @@
       var list = rt.choices();
       var c = list[i];
       if (!c) return false;
+      var before = rt.inventory();
       applyEffects(rt.vars, nodes[rt.current].choices[c.index]);
       enter(c.goto);
+      rt.lastChange = diff(before);
       return true;
     };
     rt.next = function () {
       var n = rt.node();
       if (typeof n.goto !== "string") return false;
+      var before = rt.inventory();
       enter(n.goto);
+      rt.lastChange = diff(before);
       return true;
     };
     rt.state = function () { return { node: rt.current, vars: copyVars(rt.vars), history: rt.history.slice() }; };
@@ -267,13 +395,16 @@
       rt.current = s.node;
       rt.vars = copyVars(isObj(s.vars) ? s.vars : rt.vars);
       rt.history = Array.isArray(s.history) ? s.history.slice() : [];
+      rt.lastChange = { gained: [], lost: [] };   // восстановление — не переход
       return true;
     };
+    var before0 = rt.inventory();
     enter(data.start);
+    rt.lastChange = diff(before0);
     return rt;
   }
 
-  var api = { LIMITS: LIMITS, holds: holds, applyEffects: applyEffects, checkShape: checkShape, explore: explore, check: check, paths: paths, create: create };
+  var api = { LIMITS: LIMITS, holds: holds, applyEffects: applyEffects, checkShape: checkShape, checkItems: checkItems, withItems: withItems, itemVars: itemVars, explore: explore, check: check, paths: paths, create: create };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   if (root) root.ZV_NOVEL = api;
 })(typeof window !== "undefined" ? window : null);

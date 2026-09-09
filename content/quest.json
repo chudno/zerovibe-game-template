@@ -1,0 +1,80 @@
+{
+  "start": "gate",
+  "chapters": ["gate", "hall", "final"],
+  "items": {
+    "pass": { "title": "Пропуск", "icon": "pass" },
+    "key": { "title": "Ключ от склада", "icon": "key" },
+    "stamp": { "title": "Печать на накладной", "icon": "stamp" }
+  },
+  "nodes": {
+    "gate": {
+      "bg": "lobby", "portrait": "guard", "speaker": "Охранник",
+      "text": "Бизнес-центр. Охранник смотрит на коробку: «Без пропуска не пущу. Оформите на стойке или договоритесь с начальником склада».",
+      "choices": [
+        { "text": "Оформить пропуск на стойке", "goto": "desk" },
+        { "text": "Позвонить начальнику склада", "goto": "call" }
+      ]
+    },
+    "desk": {
+      "bg": "lobby", "portrait": "clerk", "speaker": "Администратор",
+      "text": "«Курьер? Держите разовый пропуск, лифт слева».",
+      "give": ["pass"],
+      "goto": "hall"
+    },
+    "call": {
+      "bg": "lobby", "portrait": "boss", "speaker": "Начальник склада",
+      "text": "«Пропуск не нужен. Ключ от склада оставил у охраны, скажите, что от меня».",
+      "give": ["key"],
+      "goto": "hall"
+    },
+    "hall": {
+      "bg": "hall", "portrait": "hero", "speaker": "Курьер",
+      "text": "Холл. Лифт наверх, дверь склада за углом. Куда с коробкой?",
+      "choices": [
+        { "text": "На лифте в офис заказчика", "goto": "office", "needs": ["pass"] },
+        { "text": "Открыть склад ключом", "goto": "warehouse", "needs": ["key"], "take": ["key"] },
+        { "text": "Подождать у двери", "goto": "wait" }
+      ]
+    },
+    "wait": {
+      "bg": "hall", "portrait": "hero", "speaker": "Курьер",
+      "text": "Полчаса никого. Заказ остывает, телефон молчит.",
+      "goto": "late"
+    },
+    "office": {
+      "bg": "office", "portrait": "client", "speaker": "Заказчик",
+      "text": "«Наконец-то! Давайте накладную, поставлю печать».",
+      "give": ["stamp"],
+      "goto": "final"
+    },
+    "warehouse": {
+      "bg": "warehouse", "portrait": "keeper", "speaker": "Кладовщик",
+      "text": "«Принимаю. Вот печать на накладной, ключ оставьте в двери».",
+      "give": ["stamp"],
+      "goto": "final"
+    },
+    "final": {
+      "bg": "lobby", "portrait": "hero", "speaker": "Курьер",
+      "text": "Обратно на проходную. Что сдаём в отчёт?",
+      "choices": [
+        { "text": "Накладную с печатью", "goto": "done", "needs": ["stamp"] },
+        { "text": "Ничего, и так сойдёт", "goto": "nostamp" }
+      ]
+    },
+    "done": {
+      "bg": "lobby", "portrait": "hero", "speaker": "Курьер",
+      "text": "Доставка закрыта, печать на месте. Следующий адрес.",
+      "end": { "outcome": "delivered", "title": "Доставлено", "text": "Заказ принят, отчёт сдан.", "won": true }
+    },
+    "nostamp": {
+      "bg": "lobby", "portrait": "guard", "speaker": "Охранник",
+      "text": "«Без печати доставку не засчитают. Придётся возвращаться».",
+      "end": { "outcome": "unpaid", "title": "Не засчитано", "text": "Заказ отдан, но отчёта нет.", "won": false }
+    },
+    "late": {
+      "bg": "hall", "portrait": "client", "speaker": "Заказчик",
+      "text": "«Мы ждали сорок минут. В следующий раз звоните заранее».",
+      "end": { "outcome": "late", "title": "Опоздание", "text": "Доставлено, но с опозданием.", "won": false }
+    }
+  }
+}
