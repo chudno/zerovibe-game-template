@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Галерея китов</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #0b0d14; color: #e6e8f0; font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; padding: 12px 16px; border-bottom: 1px solid #23273a; position: sticky; top: 0; background: #0b0d14; z-index: 2; }
+  header h1 { font-size: 16px; margin: 0; }
+  header .muted { color: #9aa0b5; font-size: 12px; }
+  header label { color: #9aa0b5; font-size: 12px; }
+  input, select, button { font: inherit; background: #1b1f33; color: #e6e8f0; border: 1px solid #2a2f45; border-radius: 6px; padding: 5px 10px; }
+  button { cursor: pointer; }
+  button:hover { border-color: #4f7cff; }
+  a { color: #8fb0ff; }
+  main { padding: 16px; display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
+  main.only { grid-template-columns: 1fr; justify-items: center; }
+  .card { background: #11141f; border: 1px solid #23273a; border-radius: 10px; padding: 10px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+  .card h2 { font-size: 14px; margin: 0; display: flex; justify-content: space-between; gap: 8px; }
+  .card h2 code { color: #9aa0b5; font-weight: normal; font-size: 12px; }
+  .card .hint { color: #9aa0b5; font-size: 12px; margin: 0; }
+  .frame { position: relative; width: 100%; overflow: hidden; border-radius: 8px; background: #101018; }
+  .frame iframe { position: absolute; left: 0; top: 0; width: 360px; height: 640px; border: 0; transform-origin: 0 0; display: block; }
+  .only .frame { width: 360px; height: 640px; }
+  .only .frame iframe { transform: none !important; }
+  .log { font: 11px/1.35 ui-monospace, Menlo, monospace; color: #9aa0b5; min-height: 4.2em; max-height: 6.8em; overflow: auto; white-space: pre-wrap; margin: 0; }
+  .log b { color: #ffd23f; font-weight: normal; }
+  .row { display: flex; gap: 6px; flex-wrap: wrap; }
+  .row button, .row a { font-size: 12px; padding: 4px 8px; }
+  .fail { color: #ff5f6d; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Галерея китов</h1>
+  <span class="muted" id="count"></span>
+  <label>сид <input id="seed" type="number" value="1" style="width:5em"></label>
+  <button id="restartAll" type="button">Заново все</button>
+  <select id="pick" hidden></select>
+  <a id="gridLink" href="gallery.html" hidden>все киты</a>
+  <span class="muted" id="version"></span>
+</header>
+<main id="grid"></main>
+<script>
+// Все архетипы шаблона на заглушках, каждый в своём кадре 360×640 — для
+// ручной приёмки: сыграть по разу, посмотреть журнал событий встраивания.
+// Игра одна на проект, поэтому переключателя архетипа в самой игре нет:
+// галерея сама собирает index.html с подменённым config.js (srcdoc + <base>).
+// Список китов сверяется тестом с game/kits/* — новый кит без карточки не
+// пройдёт CI.
+(function () {
+  "use strict";
+  var KITS = [
+    { id: "runner", name: "Бегун", hint: "Тап — прыжок через препятствия. Победа с 8 очков.", params: { passScore: 8 } },
+    { id: "catch", name: "Ловилка", hint: "Веди корзину пальцем, лови хорошее, пропускай плохое. 30 секунд.", params: { duration: 30000, passScore: 12 } },
+    { id: "quiz", name: "Викторина", hint: "Вопросы с таймером; верные ответы дают приз." },
+    { id: "persona", name: "Какой ты", hint: "Тест без правильных ответов — в конце тип и его приз." },
+    { id: "wheel", name: "Розыгрыш", hint: "Колесо: одно касание — приз по весам. Без «Ещё раз»." },
+    { id: "platformer", name: "Платформер", hint: "Кнопки внизу: влево, вправо, прыжок. Три уровня, монеты, шипы, дверь." },
+    { id: "novel", name: "Новелла", hint: "Тап по панели — дальше; варианты — выбор. Три концовки." },
+    { id: "quest", name: "Квест", hint: "Новелла с предметами: полка сверху, без пропуска в лифт не пустят." }
+  ];
+  var PRIZE = { title: "Скидка 10%", code: "DEMO10", text: "Демо-приз галереи", button: "", url: "" };
+
+  var q = new URLSearchParams(location.search);
+  var only = q.get("only");
+  var seedInput = document.getElementById("seed");
+  if (q.get("seed")) seedInput.value = q.get("seed");
+  var narrow = window.matchMedia("(max-width: 720px)").matches;
+  if (!only && narrow) only = KITS[0].id;   // на телефоне — по одному киту, с выбором
+
+  var root = new URL("../", location.href).href;
+  var grid = document.getElementById("grid");
+  var cards = {};
+  window.__galleryEvents = [];   // для автопрогона: все события всех кадров
+
+  function config(kit, seed) {
+    return {
+      title: kit.name,
+      archetype: kit.id,
+      params: kit.params || {},
+      prize: PRIZE,
+      brand: { name: "Галерея", primary: "#4f7cff", secondary: "#ffd23f", logoUrl: "" },
+      assets: { hero: { url: "" }, items: {}, background: { url: "" }, backgrounds: {}, portraits: {} },
+      embed: true,
+      __seed: seed
+    };
+  }
+
+  // index.html шаблона с подменённым config.js и <base>, чтобы относительные
+  // пути (vendor/, game/, content/) шли к корню шаблона.
+  function build(html, kit, seed) {
+    var cfg = config(kit, seed);
+    var inline = "<script>window.ZV_TEST={seed:" + JSON.stringify(seed) + "};window.ZV_GAME=" + JSON.stringify(cfg) + ";<\/script>";
+    var out = html.replace(/<script src="game\/config\.js"><\/script>/, inline);
+    if (out === html) throw new Error("в index.html не найден game/config.js");
+    return out.replace(/<head>/, '<head><base href="' + root + '">');
+  }
+
+  function card(kit, html, seed) {
+    var el = document.createElement("section");
+    el.className = "card";
+    el.innerHTML =
+      '<h2><span>' + kit.name + '</span><code>' + kit.id + '</code></h2>' +
+      '<p class="hint">' + kit.hint + '</p>' +
+      '<div class="frame"><iframe title="' + kit.name + '" allow="autoplay; fullscreen; clipboard-write"></iframe></div>' +
+      '<pre class="log"></pre>' +
+      '<div class="row"><button type="button" data-act="restart">Заново</button>' +
+      (only ? '' : '<a href="gallery.html?only=' + kit.id + '&seed=' + seed + '">открыть одну</a>') + '</div>';
+    var iframe = el.querySelector("iframe");
+    iframe.srcdoc = build(html, kit, seed);
+    var log = el.querySelector(".log");
+    var entry = { kit: kit, el: el, iframe: iframe, log: log, lines: [] };
+    el.querySelector('[data-act="restart"]').addEventListener("click", function () {
+      iframe.contentWindow.postMessage({ source: "zv-host", type: "restart" }, "*");
+    });
+    cards[kit.id] = entry;
+    return el;
+  }
+
+  function note(entry, msg) {
+    var short = { source: undefined };
+    for (var k in msg) if (k !== "source" && Object.prototype.hasOwnProperty.call(msg, k)) short[k] = msg[k];
+    delete short.source;
+    var text = msg.type + (Object.keys(short).length > 1 ? " " + JSON.stringify(short).replace(/"type":"[^"]*",?/, "") : "");
+    entry.lines.push(text);
+    if (entry.lines.length > 8) entry.lines.shift();
+    entry.log.innerHTML = entry.lines.map(function (l, i) {
+      var cls = /error/.test(l) ? "fail" : "";
+      return (i === entry.lines.length - 1 ? "<b>" : "<span class=\"" + cls + "\">") + l + (i === entry.lines.length - 1 ? "</b>" : "</span>");
+    }).join("\n");
+    entry.log.scrollTop = entry.log.scrollHeight;
+  }
+
+  window.addEventListener("message", function (ev) {
+    var d = ev.data;
+    if (!d || d.source !== "zv-game") return;
+    for (var id in cards) {
+      if (cards[id].iframe.contentWindow === ev.source) {
+        window.__galleryEvents.push({ kit: id, type: d.type, data: d });
+        note(cards[id], d);
+        return;
+      }
+    }
+  });
+
+  function fit() {
+    document.querySelectorAll(".frame").forEach(function (f) {
+      if (grid.classList.contains("only")) return;
+      var w = f.clientWidth, s = w / 360;
+      f.style.height = Math.round(640 * s) + "px";
+      f.querySelector("iframe").style.transform = "scale(" + s + ")";
+    });
+  }
+
+  function render(html) {
+    var seed = Number(seedInput.value) || 1;
+    grid.innerHTML = "";
+    cards = {};
+    var list = only ? KITS.filter(function (k) { return k.id === only; }) : KITS;
+    if (only && !list.length) { grid.textContent = "Нет кита «" + only + "»"; return; }
+    grid.classList.toggle("only", !!only);
+    list.forEach(function (kit) { grid.appendChild(card(kit, html, seed)); });
+    document.getElementById("count").textContent = list.length + " из " + KITS.length + " китов, сид " + seed;
+    fit();
+  }
+
+  var pick = document.getElementById("pick");
+  if (only) {
+    pick.hidden = false;
+    document.getElementById("gridLink").hidden = narrow;
+    KITS.forEach(function (k) {
+      var o = document.createElement("option");
+      o.value = k.id; o.textContent = k.name; o.selected = k.id === only;
+      pick.appendChild(o);
+    });
+    pick.addEventListener("change", function () {
+      location.search = "?only=" + pick.value + "&seed=" + (Number(seedInput.value) || 1);
+    });
+  }
+
+  fetch(root + "index.html", { cache: "no-store" }).then(function (r) { return r.text(); }).then(function (html) {
+    render(html);
+    document.getElementById("restartAll").addEventListener("click", function () { render(html); });
+    seedInput.addEventListener("change", function () { render(html); });
+    window.addEventListener("resize", fit);
+  }).catch(function (e) {
+    grid.innerHTML = '<p class="fail">Не удалось загрузить index.html шаблона: ' + e.message + '</p>';
+  });
+})();
+</script>
+</body>
+</html>

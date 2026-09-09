@@ -374,6 +374,39 @@ test("quest: каждая концовка достижима, инвентар�
   } finally { await g.close(); }
 });
 
+test("галерея: все киты поднимаются в своих кадрах, шлют ready, без ошибок консоли", async () => {
+  const kits = fs.readdirSync(path.join(__dirname, "..", "..", "game", "kits"))
+    .filter((d) => fs.existsSync(path.join(__dirname, "..", "..", "game", "kits", d, "kit.js"))).sort();
+  const context = await browser.newContext({ viewport: { width: 1400, height: 900 }, deviceScaleFactor: 1 });
+  const errors = [];
+  const page = await context.newPage();
+  page.on("pageerror", (e) => errors.push("pageerror: " + e.message));
+  page.on("console", (m) => { if (m.type() === "error") errors.push("console: " + m.text()); });
+  try {
+    await page.goto(`${server.url}/tests/gallery.html?seed=1`);
+    const deadline = Date.now() + 30000;
+    let ready = [];
+    while (Date.now() < deadline) {
+      ready = await page.evaluate(() => [...new Set((window.__galleryEvents || []).filter((e) => e.type === "ready").map((e) => e.kit))].sort());
+      if (ready.length >= kits.length) break;
+      await page.waitForTimeout(250);
+    }
+    assert.deepEqual(ready, kits, "не все киты дошли до «Играть»");
+    assert.deepEqual(errors, [], "ошибки страницы галереи");
+    // Кнопка «Заново» перезапускает кадр: событие start от него.
+    const before = await page.evaluate(() => window.__galleryEvents.length);
+    await page.locator('section.card').first().locator('[data-act="restart"]').click();
+    await page.waitForTimeout(500);
+    const evs = await page.evaluate((n) => window.__galleryEvents.slice(n).map((e) => e.type), before);
+    assert.ok(evs.includes("start"), "после «Заново» нет start: " + JSON.stringify(evs));
+    // Режим одного кита — для телефона.
+    await page.goto(`${server.url}/tests/gallery.html?only=quest&seed=1`);
+    await page.waitForFunction(() => (window.__galleryEvents || []).some((e) => e.type === "ready" && e.kit === "quest"), null, { timeout: 15000 });
+    assert.equal(await page.locator("section.card").count(), 1);
+    assert.deepEqual(errors, []);
+  } finally { await context.close(); }
+});
+
 test("битый контент — экран ошибки и событие error, а не белая страница", async () => {
   const g = await openGame(browser, server, {
     archetype: "quiz", seed: 1,
