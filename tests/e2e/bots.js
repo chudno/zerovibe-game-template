@@ -140,6 +140,14 @@
     report: function () {
       return { frames: state.frames, violations: state.violations.slice(), jumps: state.jumps, seed: global.ZV ? global.ZV.seed : null };
     },
+    // Новелла: текущий узел, печать, видимые варианты — для управления мышью.
+    novel: function () {
+      var sc = global.ZV.game.scene.getScene("zv-play");
+      if (!sc || !sc.sys.isActive() || !sc.rt) return null;
+      return { id: sc.rt.id(), typing: sc.typing, linear: sc.rt.linear(), ended: !!sc.rt.ended(),
+        choices: sc.typing ? 0 : sc.rt.choices().length, vars: sc.rt.vars, over: sc.over };
+    },
+
     // Состояние игровой сцены для тестов, которые управляют мышью снаружи.
     quiz: function () {
       var sc = global.ZV.game.scene.getScene("zv-play");

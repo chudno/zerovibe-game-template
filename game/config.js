@@ -4,8 +4,9 @@ window.ZV_GAME = {
   // Заголовок на первом экране.
   title: "Название игры",
 
-  // Архетип: "runner" | "catch" | "quiz" | "persona" | "wheel" | "platformer".
-  // Выбирает кит в game/kits/. Описание и параметры — game/kits/<archetype>/README.md.
+  // Архетип: "runner" | "catch" | "quiz" | "persona" | "wheel" | "platformer" |
+  // "novel". Выбирает кит в game/kits/. Описание и параметры —
+  // game/kits/<archetype>/README.md.
   archetype: "runner",
 
   // Баланс кита: ключи и значения по умолчанию — в README кита (и в его
@@ -27,8 +28,9 @@ window.ZV_GAME = {
     logoUrl: ""            // ссылка на файл проекта; пусто — логотипа нет
   },
 
-  // Тексты и уровни (вопросы, типы, призы розыгрыша, карты платформера) — не
-  // здесь, а в content/*.json: quiz, persona, wheel, levels. Формат — README кита.
+  // Тексты, уровни и сюжет (вопросы, типы, призы розыгрыша, карты платформера,
+  // граф новеллы) — не здесь, а в content/*.json: quiz, persona, wheel, levels,
+  // novel. Формат — README кита.
 
   // Картинки. Пусто — кит рисует серые заглушки и играется как есть.
   // Числа берутся ИЗ ОТВЕТА asset_generate (frame_width/frame_height/cols),
@@ -45,7 +47,12 @@ window.ZV_GAME = {
 
     // Фон. tile: true — только если стороны текстуры 64/128/256 (иначе
     // WebGL сглаживает её вопреки pixelArt); иначе обычная картинка.
-    background: { url: "", tile: false }
+    background: { url: "", tile: false },
+
+    // Новелла: фоны и портреты по ключам из content/novel.json (node.bg,
+    // node.portrait). Каждый: { url: "" }. Пусто — заглушки.
+    backgrounds: {},
+    portraits: {}
   },
 
   // Встраивание: ?embed=1 в iframe — оболочка прячет «Во весь экран».

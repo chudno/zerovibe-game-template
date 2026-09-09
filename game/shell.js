@@ -185,10 +185,12 @@
       }
       for (var i = 0; i < max; i++) ctl.items.push(make(i));
       // Подставить подписи: лишние кнопки прячутся, цвета сбрасываются.
-      // Кегль общий: 2, а если хоть одна подпись не влезает в 2 строки — 1.
+      // Кегль общий: 2, а если хоть одна подпись не влезает — 1. В кнопку
+      // 64 px кеглем 2 влезают 2 строки, в низкую (новелла, 40 px) — одна.
+      var maxLines2 = h >= 60 ? 2 : 1;
       ctl.set = function (labels) {
         var k = 2;
-        (labels || []).forEach(function (l) { if (l && !F.fits(String(l), w - 30, 2, 2)) k = 1; });
+        (labels || []).forEach(function (l) { if (l && !F.fits(String(l), w - 30, maxLines2, 2)) k = 1; });
         for (var i = 0; i < ctl.items.length; i++) {
           var it = ctl.items[i], on = !!(labels && labels[i]);
           it.text.setFontSize(F.UNIT * k);
@@ -782,6 +784,8 @@
 
     // Уровни платформера: разбор карты, солвер проходимости, исполнитель плана.
     levels: global.ZV_LEVELS,
+    // Новелла: граф сюжета, проверка по состояниям, рантайм со снимком.
+    novel: global.ZV_NOVEL,
 
     // Промежуточный прогресс многоэкранной игры (пройден уровень, глава):
     // событие родителю, экран не меняется. p: { step, total, meta }.

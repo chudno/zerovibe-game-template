@@ -52,7 +52,12 @@
     sector:      { width: 76,  lines: 2, k: 1 },          // сектор колеса (≤8 секторов)
     sectorSmall: { width: 56,  lines: 2, k: 1 },          // сектор колеса (9–12 секторов)
     levelName:   { width: 300, lines: 2, k: 2, kMin: 1 }, // заставка уровня (заголовок)
-    levelHint:   { width: 290, lines: 2, k: 1 }           // подсказка под ней
+    levelHint:   { width: 290, lines: 2, k: 1 },          // подсказка под ней
+    novelSpeaker:{ width: 200, lines: 1, k: 1 },          // имя говорящего над репликой
+    novelText:   { width: 312, lines: 5, k: 1 },          // реплика в панели новеллы
+    novelChoice: { width: 270, lines: 2, k: 1 },          // вариант ответа (кнопка 40 px: 1 строка кеглем 2 или 2 кеглем 1)
+    endTitle:    { width: 300, lines: 2, k: 2 },          // заголовок концовки
+    endText:     { width: 290, lines: 4, k: 1 }           // описание концовки
   };
   var MAX_LEN = 240;   // страховка от абзацев там, где ждём строку
 
@@ -217,7 +222,36 @@
     return errs;
   }
 
-  var validators = { quiz: validateQuiz, persona: validatePersona, wheel: validateWheel, levels: validateLevels };
+  // Новелла: тексты по метрикам шрифта здесь, граф (достижимость, концовки,
+  // условия, ловушки) — game/novel.js.
+  var NOVEL = (typeof module !== "undefined" && module.exports) ? require("./novel.js") : root.ZV_NOVEL;
+  function validateNovel(data) {
+    var errs = NOVEL.checkShape(data);
+    if (errs.length) return errs;
+    Object.keys(data.nodes).forEach(function (id) {
+      var n = data.nodes[id], w = "nodes." + id;
+      textErr(errs, w, n.text, "text", "novelText");
+      if (n.speaker !== undefined && typeof n.speaker !== "string") errs.push(w + ": speaker — строка");
+      else if (n.speaker) fitErr(errs, w, n.speaker, "speaker", "novelSpeaker");
+      ["bg", "portrait"].forEach(function (k) {
+        if (n[k] !== undefined && !/^[a-z0-9_:-]{1,32}$/.test(String(n[k]))) errs.push(w + "." + k + ": ключ картинки — латиница/цифры/-/_/: до 32");
+      });
+      if (Array.isArray(n.choices)) {
+        n.choices.forEach(function (c, i) { if (c && typeof c === "object") textErr(errs, w + ".choices[" + i + "]", c.text, "text", "novelChoice"); });
+      }
+      if (n.end && typeof n.end === "object") {
+        if (n.end.title !== undefined && typeof n.end.title !== "string") errs.push(w + ".end: title — строка");
+        else if (n.end.title) fitErr(errs, w + ".end", n.end.title, "title", "endTitle");
+        if (n.end.text !== undefined && typeof n.end.text !== "string") errs.push(w + ".end: text — строка");
+        else if (n.end.text) fitErr(errs, w + ".end", n.end.text, "text", "endText");
+        if (n.end.prize !== undefined && n.end.prize !== null) validatePrize(n.end.prize, w + ".end.prize", errs);
+      }
+    });
+    if (errs.length) return errs;
+    return NOVEL.check(data);
+  }
+
+  var validators = { quiz: validateQuiz, persona: validatePersona, wheel: validateWheel, levels: validateLevels, novel: validateNovel };
 
   function validate(kind, data, opts) {
     var fn = validators[kind];

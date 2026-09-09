@@ -9,6 +9,7 @@ const path = require("node:path");
 const { startServer, openGame, launchBrowser } = require("./lib.js");
 const L = require("../../game/levels.js");
 const levelgen = require("../levelgen.js");
+const NOVEL = require("../../game/novel.js");
 
 const content = (name) => JSON.parse(fs.readFileSync(path.join(__dirname, "..", "..", "content", name), "utf8"));
 
@@ -265,6 +266,63 @@ test("сверка солвера с ботом: «проходим» — бот
       clean(n, await n.botReport());
     } finally { await n.close(); }
   }
+});
+
+// Новелла мышью: тап по панели — «дальше»/показать целиком, тап по варианту.
+async function playNovel(g, steps) {
+  const path = steps.slice();
+  for (let guard = 0; guard < 200; guard++) {
+    const st = await g.scene(() => window.__zvBot.novel());
+    if (!st) { await g.page.waitForTimeout(100); continue; }
+    if (st.typing) { await g.tap(180, 380); await g.page.waitForTimeout(80); continue; }
+    if (st.ended) { await g.tap(180, 380); return; }
+    if (st.linear) { await g.tap(180, 380); await g.page.waitForTimeout(120); continue; }
+    if (st.choices > 0) {
+      const i = path.shift();
+      assert.ok(typeof i === "number" && i < st.choices, "план кончился раньше сюжета: " + st.id);
+      await g.tap(180, 468 + i * 44);
+      await g.page.waitForTimeout(300);
+      continue;
+    }
+    await g.page.waitForTimeout(100);
+  }
+  throw new Error("новелла не дошла до концовки");
+}
+
+test("novel: каждая концовка достижима мышью по пути из графа; progress по главам; условная реплика видна", async () => {
+  const data = content("novel.json");
+  const paths = NOVEL.paths(data);
+  assert.deepEqual(Object.keys(paths).sort(), ["delivered", "friend", "late"]);
+  for (const outcome of Object.keys(paths)) {
+    const g = await openGame(browser, server, { archetype: "novel", seed: 1, params: { typeMs: 0 } });
+    try {
+      const m = await g.mark();
+      await g.play();
+      await playNovel(g, paths[outcome]);
+      const fin = await g.waitFinish(m, 10000);
+      assert.equal(fin.outcome, outcome);
+      assert.equal(fin.meta.archetype, "novel");
+      assert.equal(fin.won, data.nodes[Object.keys(data.nodes).find((id) => data.nodes[id].end && data.nodes[id].end.outcome === outcome)].end.won);
+      const progress = (await g.events()).slice(m).filter((e) => e.type === "progress");
+      assert.ok(progress.length >= 1 && progress[0].step === 1 && progress[0].total === 3, JSON.stringify(progress));
+      clean(g);
+    } finally { await g.close(); }
+  }
+  // Печать по буквам: сразу после старта текст не полный, тап показывает целиком и открывает варианты.
+  const t = await openGame(browser, server, { archetype: "novel", seed: 1, params: { typeMs: 40 } });
+  try {
+    await t.play();
+    await t.page.waitForTimeout(200);
+    const st = await t.scene(() => window.__zvBot.novel());
+    assert.equal(st.typing, true);
+    assert.equal(st.choices, 0);
+    await t.tap(180, 380);
+    await t.page.waitForTimeout(100);
+    const st2 = await t.scene(() => window.__zvBot.novel());
+    assert.equal(st2.typing, false);
+    assert.equal(st2.choices, 2);
+    clean(t);
+  } finally { await t.close(); }
 });
 
 test("битый контент — экран ошибки и событие error, а не белая страница", async () => {

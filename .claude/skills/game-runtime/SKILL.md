@@ -10,7 +10,7 @@ vendor/                      движок, локальная копия (НЕ �
 index.html                   <div id="game"> + подключение скриптов
 game/style.css               стили вокруг канвы (image-rendering!)
 game/config.js               window.ZV_GAME — настройка: params, prize, картинки
-content/<kit>.json           тексты, призы и уровни китов (quiz, persona, wheel, levels)
+content/<kit>.json           тексты, призы, уровни и сюжет китов (quiz, persona, wheel, levels, novel)
 game/shell.js                window.ZV: экраны, ui/sprite/juice/floor/prizes
 game/fontdata.js + font.js   пиксельный шрифт: растр (генерируется) и метрики
 game/pixelfont.js            атлас шрифта → BitmapText
@@ -18,6 +18,7 @@ game/random.js               ZV.random — случайность с сидом 
 game/content.js              слияние params и проверка content/*.json
 game/balance.js              физика раннера числами (окно прыжка, реакция)
 game/levels.js               уровни платформера: карта → сетка, солвер проходимости, план для бота
+game/novel.js                сюжет новеллы: граф узлов, проверка по состояниям, рантайм
 game/layout.js               геометрия: фон, сетка кадров, хитбокс
 game/main.js                 берёт кит по config.archetype
 game/kits/<a>/               kit.js + README.md — механика архетипа
@@ -53,6 +54,10 @@ game/kits/<a>/               kit.js + README.md — механика архет�
   быть достижимы. Тело героя платформера — ровно 22×48, тела монеты/шипов/
   выхода — `ZV.levels.BODIES`; кит и солвер считают одни и те же
   прямоугольники, менять их порознь нельзя.
+- **Сюжет** (`ZV.novel` = `game/novel.js`): `content/novel.json` — граф
+  узлов с вариантами, переменными и концовками; валидатор обходит состояния
+  (достижимость, ≥2 концовок, ловушки, условия). Рантайм `ZV.novel.create(data)`
+  — `node()/choices()/choose(i)/next()/ended()/state()/load()`; сцену рисует кит.
 - **Призы**: `config.prize` `{title, code, text, button, url}` — карточка на
   экране результата при `won`. Кит с призом внутри (розыгрыш, «какой ты»)
   передаёт `prize` в `ZV.finish` сам. `ZV.prizes.pick(items)` — взвешенный
@@ -108,13 +113,13 @@ global.ZV.finish(scene, { score: 12, won: true, meta: {}, text: "препятс�
 (width/wrap/fit/sanitize), `ui.button/title/hint/backdrop/text`, `ui.choices`
 (столбик кнопок-вариантов с `set/color/centerOf`), `ui.fail`, `sprite.apply/playAnim`,
 `juice.squash/stretch/shadow/dust`, `floor`, `FLOOR_DEPTH`, `random`,
-`params`, `loadContent/content`, `prizes`, `progress`, `levels`. Новый кит —
+`params`, `loadContent/content`, `prizes`, `progress`, `levels`, `novel`. Новый кит —
 добавь `<script>` в `index.html` и имя архетипа в комментарий `config.js`,
 иначе тест не пропустит.
 
 ## config.js
 
-`title`, `archetype` (runner|catch|quiz|persona|wheel|platformer), `params` (баланс
+`title`, `archetype` (runner|catch|quiz|persona|wheel|platformer|novel), `params` (баланс
 кита, ключи — README кита), `prize` (приз за победу), `brand`
 (name/primary/secondary/logoUrl) и `assets` (`hero` с
 frameWidth/frameHeight/frames/fps, `items`, `background` с `tile`). Поля
