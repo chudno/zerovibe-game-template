@@ -60,8 +60,10 @@
     endText:     { width: 290, lines: 4, k: 1 },          // описание концовки
     itemTitle:   { width: 260, lines: 1, k: 1 },          // название предмета в инвентаре и тосте
     // week4
-    binTitle:      { width: 112, lines: 2, k: 1 },        // подпись корзины «собери заказ» (2–3 корзины)
-    binTitleSmall: { width: 82,  lines: 2, k: 1 },        // то же при 4 корзинах: 360/4 минус поля
+    // Ширина подписи корзины = ровно тот wordWrap, что ставит кит: floor(360/n) − 14.
+    binTitleWide:  { width: 166, lines: 2, k: 1 },        // подпись корзины «собери заказ» при 2 корзинах
+    binTitle:      { width: 106, lines: 2, k: 1 },        // то же при 3 корзинах
+    binTitleSmall: { width: 76,  lines: 2, k: 1 },        // то же при 4 корзинах
     sortItem:      { width: 120, lines: 1, k: 1 }         // подпись под предметом на ленте
   };
   var MAX_LEN = 240;   // страховка от абзацев там, где ждём строку
@@ -276,18 +278,20 @@
     var errs = [];
     var bins = data && data.bins;
     if (!Array.isArray(bins) || bins.length < 2 || bins.length > 4) return ["bins: от 2 до 4 корзин (больше не влезает в 360 px)"];
-    var area = bins.length > 3 ? "binTitleSmall" : "binTitle";
+    var area = bins.length > 3 ? "binTitleSmall" : (bins.length < 3 ? "binTitleWide" : "binTitle");
     var ids = {}, order = [];
     bins.forEach(function (b, i) {
       var w = "bins[" + i + "]";
       if (!b || typeof b !== "object") { errs.push(w + ": объект {id, title, color}"); return; }
-      if (!/^[a-z0-9_-]{1,32}$/.test(String(b.id))) errs.push(w + ": id — латиница/цифры/-/_ до 32");
+      // Тип проверяем ДО приведения к строке: String(undefined) прошёл бы регулярку,
+      // и корзина без id стала бы непроходимой — тап по ней всегда ошибка.
+      if (typeof b.id !== "string" || !/^[a-z0-9_-]{1,32}$/.test(b.id)) errs.push(w + ": id — латиница/цифры/-/_ до 32");
       else if (b.id === "junk") errs.push(w + ": id «junk» занят мусором — предметом, который надо пропустить");
       else if (ids[b.id]) errs.push(w + ": id «" + b.id + "» повторяется");
       else { ids[b.id] = true; order.push(b.id); }
       textErr(errs, w, b.title, "title", area);
       if (b.color !== undefined && !/^#[0-9a-fA-F]{6}$/.test(String(b.color))) errs.push(w + ": color — #rrggbb");
-      if (b.icon !== undefined && !/^[a-z0-9_-]{1,32}$/.test(String(b.icon))) errs.push(w + ": icon — ключ картинки: латиница/цифры/-/_ до 32");
+      if (b.icon !== undefined && (typeof b.icon !== "string" || !/^[a-z0-9_-]{1,32}$/.test(b.icon))) errs.push(w + ": icon — ключ картинки: латиница/цифры/-/_ до 32");
     });
 
     var items = data && data.items;
@@ -302,11 +306,13 @@
         errs.push(w + ".bin: одна корзина строкой; предмет с двумя верными ответами игрок не отличит от ошибки");
         return;
       }
+      // Подпись и значок — у КАЖДОГО предмета: мусор кит рисует ровно так же,
+      // а «Пустая коробка» как раз мусор и как раз на пределе ширины.
+      textErr(errs, w, it.title, "title", "sortItem");
+      if (it.icon !== undefined && (typeof it.icon !== "string" || !/^[a-z0-9_-]{1,32}$/.test(it.icon))) errs.push(w + ": icon — ключ картинки: латиница/цифры/-/_ до 32");
       if (it.bin === "junk") { junk++; return; }
       if (!ids[it.bin]) { errs.push(w + ".bin: корзины «" + it.bin + "» нет — доступны: " + order.join(", ") + ", junk"); return; }
       if (POOL_S.weightOf(it) > 0) filled[it.bin] = true;
-      textErr(errs, w, it.title, "title", "sortItem");
-      if (it.icon !== undefined && !/^[a-z0-9_-]{1,32}$/.test(String(it.icon))) errs.push(w + ": icon — ключ картинки: латиница/цифры/-/_ до 32");
     });
     bins.forEach(function (b, i) {
       if (!b || !ids[b.id] || filled[b.id]) return;
@@ -314,11 +320,15 @@
     });
 
     // Мусор и его доля живут парой: без предметов «junk» игра вырождается в
-    // «тапай всё», а мусор без junkChance никогда не выедет на ленту.
+    // «тапай всё», а мусор при обеих ручках в нуле никогда не выедет на ленту.
+    // Доля растёт от junkChance к junkChanceMax, поэтому смотрим на пик: «в
+    // начале мусора нет, к концу партии появляется» — законная настройка.
     var p = (opts && opts.params) || {};
     var chance = typeof p.junkChance === "number" ? p.junkChance : 0.12;
-    if (chance > 0 && !junk) errs.push("junkChance " + chance + ", а предметов с bin «junk» нет — мусор пропускать нечего, добавь его или поставь junkChance 0");
-    if (chance === 0 && junk) errs.push("предметы с bin «junk» есть, а junkChance 0 — мусор никогда не выедет на ленту");
+    var chanceMax = typeof p.junkChanceMax === "number" ? p.junkChanceMax : 0.28;
+    var peak = Math.max(chance, chanceMax);
+    if (peak > 0 && !junk) errs.push("junkChance " + chance + ", а предметов с bin «junk» нет — мусор пропускать нечего, добавь его или поставь junkChance и junkChanceMax в 0");
+    if (peak === 0 && junk) errs.push("предметы с bin «junk» есть, а junkChance и junkChanceMax оба 0 — мусор никогда не выедет на ленту");
     if (errs.length) return errs;
 
     // Темп: на всём диапазоне скоростей предмет успевают увидеть и решить.

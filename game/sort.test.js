@@ -95,6 +95,22 @@ test("bins: от 2 до 4, id не «junk», без повторов, подпи
   assert.match(first(d), /не влезает/);
   d = copy(); d.bins[0].color = "синий";
   assert.match(first(d), /color — #rrggbb/);
+  // Корзина вовсе без id: без проверки типа String(undefined) прошёл бы
+  // регулярку, а в игре тап по такой корзине всегда был бы ошибкой.
+  d = copy(); delete d.bins[0].id;
+  assert.match(first(d), /id — латиница\/цифры/);
+});
+
+test("подпись корзины меряется по числу корзин: две широкие, четыре узкие", () => {
+  // Две корзины: кит даёт wordWrap 166 px, длинная пара подписей влезает.
+  let d = copy();
+  d.bins = [{ id: "yes", title: "Перерабатывается" }, { id: "no", title: "Не перерабатывается" }];
+  d.items = d.items.map((i) => ({ ...i, bin: i.bin === "junk" ? "junk" : (i.bin === "cold" ? "yes" : "no") }));
+  assert.deepEqual(C.validate("sort", d, {}), []);
+  // Те же подписи при четырёх корзинах в 76 px уже не влезают.
+  d.bins = d.bins.concat([{ id: "a", title: "А" }, { id: "b", title: "Б" }]);
+  d.items[0].bin = "a"; d.items[1].bin = "b";
+  assert.match(first(d), /не влезает/);
 });
 
 test("items: 4..40, уникальные id, вес — неотрицательное число", () => {
@@ -115,6 +131,16 @@ test("bin — ровно одна строка из bins или «junk», ина
   assert.match(first(d), /корзины «warm» нет — доступны: cold, hot, dry, junk/);
 });
 
+test("мусор проверяется как обычный предмет: подпись и значок", () => {
+  // Кит рисует мусор той же подписью — длинная едет на ленту как есть.
+  let d = copy(); d.items.find((i) => i.bin === "junk").title = "Очень длинное название мусора на весь экран";
+  assert.match(first(d), /не влезает/);
+  d = copy(); delete d.items.find((i) => i.bin === "junk").title;
+  assert.match(first(d), /title — непустая строка/);
+  d = copy(); d.items.find((i) => i.bin === "junk").icon = "плохой ключ!";
+  assert.match(first(d), /icon — ключ картинки/);
+});
+
 test("мёртвая корзина: ни одного предмета с весом больше нуля", () => {
   let d = copy(); d.items = d.items.filter((i) => i.bin !== "hot");
   assert.match(first(d), /«Горячее»: ни одного предмета — корзина никогда не понадобится/);
@@ -128,8 +154,14 @@ test("мусор и junkChance ходят парой в обе стороны", 
   assert.match(first(d), /мусор пропускать нечего/);
   // Без params берётся дефолт кита junkChance 0.12 — та же ошибка.
   assert.match(first(d, { params: { junkChance: 0.2 } }), /мусор пропускать нечего/);
-  assert.deepEqual(C.validate("sort", d, { params: { junkChance: 0 } }), []);
-  assert.match(first(copy(), { params: { junkChance: 0 } }), /никогда не выедет на ленту/);
+  assert.deepEqual(C.validate("sort", d, { params: { junkChance: 0, junkChanceMax: 0 } }), []);
+  assert.match(first(copy(), { params: { junkChance: 0, junkChanceMax: 0 } }), /оба 0 — мусор никогда не выедет/);
+  // Пик считается по ОБЕИМ ручкам: «в начале мусора нет, к концу появляется» —
+  // законная настройка, а не ошибка контента.
+  assert.deepEqual(C.validate("sort", copy(), { params: { junkChance: 0 } }), []);
+  assert.deepEqual(C.validate("sort", copy(), { params: { junkChance: 0, junkChanceMax: 0.28 } }), []);
+  // И наоборот: мусора в файле нет, а к концу партии он понадобится.
+  assert.match(first(d, { params: { junkChance: 0, junkChanceMax: 0.28 } }), /мусор пропускать нечего/);
 });
 
 test("темп проверяется по params: слишком быстрая лента — ошибка контента", () => {
