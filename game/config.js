@@ -9,6 +9,7 @@ window.ZV_GAME = {
   // week4: сюда дописывается новый архетип, по слову на строку, в алфавитном порядке
   // "memory" |
   // "clicker" |
+  // "sort" |
   // Выбирает кит в game/kits/. Описание и параметры — game/kits/<archetype>/README.md.
   archetype: "runner",
 

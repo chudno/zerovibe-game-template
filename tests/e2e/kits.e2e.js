@@ -992,3 +992,68 @@ test("clicker: бросающее хранилище — эксперт всё �
     clean(g, rep);
   } finally { await g.close(); }
 });
+
+// --- собери заказ (sort) -----------------------------------------------------
+// Три сценария: эксперт знает верную корзину и обязан выиграть без единой
+// ошибки; новичок жмёт первую корзину всегда и обязан проиграть по жизням;
+// тач-цели проверяются настоящей мышью в САМЫЙ край корзины.
+test("sort: эксперт разбирает ленту без ошибок и выигрывает, мусор пропускает", async () => {
+  const g = await openGame(browser, server, { archetype: "sort", seed: 5, params: { duration: 20000, passScore: 60 } });
+  try {
+    const m = await g.mark();
+    await g.play();
+    await g.bot("sort", "expert");
+    const fin = await g.waitFinish(m, 60000);
+    const rep = await g.botReport();
+    assert.ok(fin.won, JSON.stringify({ fin, rep }));
+    assert.equal(fin.meta.archetype, "sort");
+    assert.equal(fin.meta.mistakes, 0, "эксперт знает верную корзину — ошибок быть не должно");
+    assert.ok(fin.meta.sorted >= 6, "за 20 с разобрано слишком мало: " + fin.meta.sorted);
+    // Лента разгоняется, но не выше потолка — иначе инвариант темпа врёт.
+    assert.ok(fin.meta.topSpeed >= 90 && fin.meta.topSpeed <= 190, "скорость вне диапазона: " + fin.meta.topSpeed);
+    assert.ok(fin.meta.bestStreak >= 5, "серия не набралась: " + fin.meta.bestStreak);
+    clean(g, rep);
+  } finally { await g.close(); }
+});
+
+test("sort: новичок жмёт первую корзину всегда и проигрывает по жизням", async () => {
+  const g = await openGame(browser, server, { archetype: "sort", seed: 5, params: { duration: 45000 } });
+  try {
+    const m = await g.mark();
+    await g.play();
+    await g.bot("sort", "novice");
+    const fin = await g.waitFinish(m, 60000);
+    const rep = await g.botReport();
+    assert.equal(fin.won, false, "игра, которая проходится случайными тапами, не игра");
+    // Проиграл именно по жизням: ошибок больше, чем прощается, и время не вышло.
+    assert.ok(fin.meta.mistakes > 2, JSON.stringify(fin.meta));
+    clean(g, rep);
+  } finally { await g.close(); }
+});
+
+test("sort: тап настоящей мышью в самый край корзины засчитан — тач-цель ≥24 px", async () => {
+  const g = await openGame(browser, server, { archetype: "sort", seed: 9, params: { duration: 45000, beltSpeed: 60, beltMax: 60 } });
+  try {
+    await g.play();
+    // Ждём предмет в полосе решения, чтобы тап отправил именно его.
+    let st = null;
+    for (let guard = 0; guard < 200; guard++) {
+      st = await g.scene(() => window.__zvBot.sort());
+      if (st && st.current && st.current.x >= 232) break;
+      await g.page.waitForTimeout(50);
+    }
+    assert.ok(st && st.current, "предмет так и не доехал до полосы решения");
+    const bin = st.bins.find((b) => b.id === st.current.bin);
+    assert.ok(bin, "у текущего предмета нет своей корзины: " + JSON.stringify(st));
+    // Корзина 360/bins шириной; целимся в 2 px от её левой границы.
+    const half = Math.floor(360 / st.bins.length / 2);
+    const edgeX = bin.x - half + 2;
+    const before = st.sorted;
+    await g.tap(edgeX, bin.y);
+    await g.page.waitForTimeout(200);
+    const after = await g.scene(() => window.__zvBot.sort());
+    assert.equal(after.sorted, before + 1, "тап в край корзины не засчитан — тач-цель уже 24 px");
+    assert.equal(after.lives, st.lives, "верная корзина отняла жизнь");
+    assert.deepEqual(g.errors, [], "ошибки страницы");
+  } finally { await g.close(); }
+});

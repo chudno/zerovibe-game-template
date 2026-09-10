@@ -65,7 +65,20 @@
     // week4: clicker
     careTitle:   { width: 64,  lines: 1, k: 1 }, // подпись кнопки ухода 72×72 у кликера
     stageText:   { width: 290, lines: 2, k: 1 }, // строка стадии кликера под заголовком
-    stageTitle:  { width: 200, lines: 1, k: 2, kMin: 1 } // название стадии кликера (надпись и результат)
+    stageTitle:  { width: 200, lines: 1, k: 2, kMin: 1 }, // название стадии кликера (надпись и результат)
+    levelHint:   { width: 290, lines: 2, k: 1 }, // подсказка под ней
+    novelSpeaker:{ width: 200, lines: 1, k: 1 }, // имя говорящего над репликой
+    novelText:   { width: 312, lines: 5, k: 1 }, // реплика в панели новеллы
+    novelChoice: { width: 270, lines: 2, k: 1 }, // вариант ответа (кнопка 40 px: 1 строка кеглем 2 или 2 кеглем 1)
+    endTitle:    { width: 300, lines: 2, k: 2 }, // заголовок концовки
+    endText:     { width: 290, lines: 4, k: 1 }, // описание концовки
+    itemTitle:   { width: 260, lines: 1, k: 1 }, // название предмета в инвентаре и тосте
+    // week4
+    // Ширина подписи корзины = ровно тот wordWrap, что ставит кит: floor(360/n) − 14.
+    binTitleWide:  { width: 166, lines: 2, k: 1 }, // подпись корзины «собери заказ» при 2 корзинах
+    binTitle:      { width: 106, lines: 2, k: 1 }, // то же при 3 корзинах
+    binTitleSmall: { width: 76,  lines: 2, k: 1 }, // то же при 4 корзинах
+    sortItem:      { width: 120, lines: 1, k: 1 } // подпись под предметом на ленте
   };
   var MAX_LEN = 240;   // страховка от абзацев там, где ждём строку
 
@@ -389,8 +402,6 @@
     return errs;
   }
 
-  // По ключу на строку: новый кит дописывает СВОЮ строку под маркером и не
-  // трогает чужие — иначе параллельные ветки дерутся за одну длинную строку.
   // Кликер: форма данных здесь, ДОСТИЖИМОСТЬ цели — солвером экономики
   // (game/clicker.js), тем же, что отдаёт план боту. Валидатор обязан
   // работать и без opts: тогда берутся дефолты кита (CLICKER.PARAMS).
@@ -500,6 +511,77 @@
     return errs;
   }
 
+  // «Собери заказ»: корзины, предметы и мусор. Главная гарантия — у предмета
+  // РОВНО одна верная корзина: предмет с двумя верными ответами игрок не
+  // отличит от собственной ошибки. Плюс темп: слишком быстрая лента ловится
+  // game/sort.js по params, а не жалобой тестера.
+  var SORT = (typeof module !== "undefined" && module.exports) ? require("./sort.js") : root.ZV_SORT;
+  var POOL_S = (typeof module !== "undefined" && module.exports) ? require("./pool.js") : root.ZV_POOL;
+  function validateSort(data, opts) {
+    var errs = [];
+    var bins = data && data.bins;
+    if (!Array.isArray(bins) || bins.length < 2 || bins.length > 4) return ["bins: от 2 до 4 корзин (больше не влезает в 360 px)"];
+    var area = bins.length > 3 ? "binTitleSmall" : (bins.length < 3 ? "binTitleWide" : "binTitle");
+    var ids = {}, order = [];
+    bins.forEach(function (b, i) {
+      var w = "bins[" + i + "]";
+      if (!b || typeof b !== "object") { errs.push(w + ": объект {id, title, color}"); return; }
+      // Тип проверяем ДО приведения к строке: String(undefined) прошёл бы регулярку,
+      // и корзина без id стала бы непроходимой — тап по ней всегда ошибка.
+      if (typeof b.id !== "string" || !/^[a-z0-9_-]{1,32}$/.test(b.id)) errs.push(w + ": id — латиница/цифры/-/_ до 32");
+      else if (b.id === "junk") errs.push(w + ": id «junk» занят мусором — предметом, который надо пропустить");
+      else if (ids[b.id]) errs.push(w + ": id «" + b.id + "» повторяется");
+      else { ids[b.id] = true; order.push(b.id); }
+      textErr(errs, w, b.title, "title", area);
+      if (b.color !== undefined && !/^#[0-9a-fA-F]{6}$/.test(String(b.color))) errs.push(w + ": color — #rrggbb");
+      if (b.icon !== undefined && (typeof b.icon !== "string" || !/^[a-z0-9_-]{1,32}$/.test(b.icon))) errs.push(w + ": icon — ключ картинки: латиница/цифры/-/_ до 32");
+    });
+
+    var items = data && data.items;
+    var shape = POOL_S.checkShape(items, { where: "items", min: 4, max: 40 });
+    for (var s = 0; s < shape.length; s++) errs.push(shape[s]);
+    if (errs.length) return errs;
+
+    var filled = {}, junk = 0;
+    items.forEach(function (it, i) {
+      var w = "items[" + i + "]";
+      if (Array.isArray(it.bin) || typeof it.bin !== "string" || !it.bin) {
+        errs.push(w + ".bin: одна корзина строкой; предмет с двумя верными ответами игрок не отличит от ошибки");
+        return;
+      }
+      // Подпись и значок — у КАЖДОГО предмета: мусор кит рисует ровно так же,
+      // а «Пустая коробка» как раз мусор и как раз на пределе ширины.
+      textErr(errs, w, it.title, "title", "sortItem");
+      if (it.icon !== undefined && (typeof it.icon !== "string" || !/^[a-z0-9_-]{1,32}$/.test(it.icon))) errs.push(w + ": icon — ключ картинки: латиница/цифры/-/_ до 32");
+      if (it.bin === "junk") { junk++; return; }
+      if (!ids[it.bin]) { errs.push(w + ".bin: корзины «" + it.bin + "» нет — доступны: " + order.join(", ") + ", junk"); return; }
+      if (POOL_S.weightOf(it) > 0) filled[it.bin] = true;
+    });
+    bins.forEach(function (b, i) {
+      if (!b || !ids[b.id] || filled[b.id]) return;
+      errs.push("bins[" + i + "] «" + b.title + "»: ни одного предмета — корзина никогда не понадобится, убери её или добавь предмет");
+    });
+
+    // Мусор и его доля живут парой: без предметов «junk» игра вырождается в
+    // «тапай всё», а мусор при обеих ручках в нуле никогда не выедет на ленту.
+    // Доля растёт от junkChance к junkChanceMax, поэтому смотрим на пик: «в
+    // начале мусора нет, к концу партии появляется» — законная настройка.
+    var p = (opts && opts.params) || {};
+    var chance = typeof p.junkChance === "number" ? p.junkChance : 0.12;
+    var chanceMax = typeof p.junkChanceMax === "number" ? p.junkChanceMax : 0.28;
+    var peak = Math.max(chance, chanceMax);
+    if (peak > 0 && !junk) errs.push("junkChance " + chance + ", а предметов с bin «junk» нет — мусор пропускать нечего, добавь его или поставь junkChance и junkChanceMax в 0");
+    if (peak === 0 && junk) errs.push("предметы с bin «junk» есть, а junkChance и junkChanceMax оба 0 — мусор никогда не выедет на ленту");
+    if (errs.length) return errs;
+
+    // Темп: на всём диапазоне скоростей предмет успевают увидеть и решить.
+    if (opts && opts.params) {
+      var win = SORT.window(opts.params);
+      if (!win.ok) errs.push(win.reason);
+    }
+    return errs;
+  }
+
   // По ключу на строку: новый кит дописывает СВОЮ строку под маркером и не
   // трогает чужие — иначе параллельные ветки дерутся за одну длинную строку.
   var validators = {
@@ -511,7 +593,8 @@
     quest: validateQuest,
     // week4
     memory: validateMemory,
-    clicker: validateClicker
+    clicker: validateClicker,
+    sort: validateSort
   };
 
   function validate(kind, data, opts) {
