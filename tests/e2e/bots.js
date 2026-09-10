@@ -108,6 +108,34 @@
       });
       target = Math.max(50, Math.min(310, target));
       if (Math.abs(basket.x - target) > 2) sc.input.emit("pointermove", { x: target, y: 560 });
+    },
+
+    // Сортировка: бот читает состояние сцены (текущий предмет и корзины) и
+    // жмёт корзину событием — партию за 45 с мышью снаружи не отыграть, кадры
+    // не поспевают. Тач-цели корзин проверяет отдельный сценарий живой мышью.
+    // Эксперт знает верную корзину и мусор не трогает; новичок всегда жмёт
+    // первую — при трёх корзинах две трети тапов ошибочны.
+    sort: function (sc) {
+      if (typeof sc.score === "number" && (!finite(sc.score) || sc.score < 0)) violation("счёт отрицательный или не число");
+      if (sc.items && sc.items.length > 8) violation("предметы копятся на ленте: " + sc.items.length);
+      if (sc.tl && sc.tl.pending() >= 50) violation("таймлайн течёт: " + sc.tl.pending() + " шагов");
+      var cur = null, i;
+      for (i = 0; sc.items && i < sc.items.length; i++) {
+        var it = sc.items[i];
+        if (it.done || !it.box) continue;
+        if (!finite(it.x)) violation("координата предмета не число");
+        if (it.x < -64) violation("предмет левее -64 px");
+        if (!cur || it.x > cur.x) cur = it;
+      }
+      if (!cur || !sc.bins || !sc.bins.length) return;
+      // Решаем в полосе перед линией сброса — там же, где её меряет
+      // game/sort.js: раньше тапать нечестно, позже предмет уедет.
+      if (cur.x < 232) return;
+      if (state.mode === "novice") { sc.bins[0].box.emit("pointerup"); return; }
+      if (cur.bin === "junk") return;
+      for (i = 0; i < sc.bins.length; i++) {
+        if (sc.bins[i].id === cur.bin) { sc.bins[i].box.emit("pointerup"); return; }
+      }
     }
     // week4 bots
   };
@@ -160,6 +188,24 @@
       if (!item) return null;
       return { index: sc.index, total: sc.order.length, locked: sc.locked, over: sc.over,
         correct: typeof item.correct === "number" ? item.correct : -1, answers: item.answers.length, score: sc.score };
+    },
+
+    // Сортировка: текущий предмет и корзины с координатами — тест тапает по
+    // ним настоящей мышью и сверяет исход.
+    sort: function () {
+      var sc = global.ZV.game.scene.getScene("zv-play");
+      if (!sc || !sc.sys.isActive() || !sc.bins) return null;
+      var cur = null;
+      for (var i = 0; sc.items && i < sc.items.length; i++) {
+        var it = sc.items[i];
+        if (it.done || !it.box) continue;
+        if (!cur || it.x > cur.x) cur = it;
+      }
+      return {
+        current: cur ? { id: cur.id, bin: cur.bin, x: Math.round(cur.x), y: Math.round(cur.box.y) } : null,
+        bins: sc.bins.map(function (b) { return { id: b.id, x: b.x, y: b.y }; }),
+        score: sc.score, lives: sc.lives, streak: sc.streak, sorted: sc.sorted, over: sc.over
+      };
     }
     // week4 probes
   };
