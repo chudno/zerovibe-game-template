@@ -262,7 +262,17 @@
     return validateNovel(data);
   }
 
-  var validators = { quiz: validateQuiz, persona: validatePersona, wheel: validateWheel, levels: validateLevels, novel: validateNovel, quest: validateQuest };
+  // По ключу на строку: новый кит дописывает СВОЮ строку под маркером и не
+  // трогает чужие — иначе параллельные ветки дерутся за одну длинную строку.
+  var validators = {
+    quiz: validateQuiz,
+    persona: validatePersona,
+    wheel: validateWheel,
+    levels: validateLevels,
+    novel: validateNovel,
+    quest: validateQuest
+    // week4
+  };
 
   function validate(kind, data, opts) {
     var fn = validators[kind];

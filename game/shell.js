@@ -35,10 +35,11 @@
   // Для багрепорта: «открой ?seed=<число>» повторяет партию.
   if (global.console && global.console.log) global.console.log("game seed: " + random.seed);
 
-  // Параметры кита: дефолты кита ← config.params ← перекрытия теста.
+  // Параметры кита: дефолты кита ← config.params ← параметры узла мини-игры
+  // (ZV_PLAY_PARAMS у сюжета) ← перекрытия теста. Перекрытие теста последнее.
   // Опечатка в config.params не ломает игру — уходит в предупреждение.
   function params(defaults) {
-    var r = global.ZV_CONTENT.mergeParams(defaults, config.params, TEST.params);
+    var r = global.ZV_CONTENT.mergeParams(defaults, config.params, global.ZV_PLAY_PARAMS || {}, TEST.params);
     for (var i = 0; i < r.warnings.length; i++) {
       if (global.console) global.console.warn("config.params: " + r.warnings[i]);
     }
@@ -49,6 +50,9 @@
   // create кит берёт content(scene, kind) → { data, errors }. Ошибки формата
   // показываются экраном (ui.fail), а не белой страницей.
   function loadContent(scene, kind, url) {
+    // Адрес из ZV_TEST.contentUrl — фикстура вместо боевого content/<kind>.json
+    // (галерея и e2e подсовывают свой сюжет, файлы репозитория не трогая).
+    if (!url && TEST.contentUrl && TEST.contentUrl[kind]) url = TEST.contentUrl[kind];
     scene.load.json("zv-content-" + kind, url || ("content/" + kind + ".json"));
   }
   // opts — данные для валидатора (у платформера: физика, от которой зависит
@@ -811,6 +815,16 @@
     levels: global.ZV_LEVELS,
     // Новелла: граф сюжета, проверка по состояниям, рантайм со снимком.
     novel: global.ZV_NOVEL,
+
+    // week4 modules
+    // Сетка тач-целей целыми числами: раскладка, попадание пальцем, пары.
+    grid: global.ZV_GRID,
+    // Лента шагов по модельному времени: кит зовёт tl.update(delta) и tl.clear().
+    timeline: global.ZV_TIMELINE,
+    // Прогресс как удобство: партия обязана проходиться при пустом хранилище.
+    save: global.ZV_SAVE,
+    // Пул предметов с весами, категориями и антиповтором.
+    pool: global.ZV_POOL,
 
     // Промежуточный прогресс многоэкранной игры (пройден уровень, глава):
     // событие родителю, экран не меняется. p: { step, total, meta }.

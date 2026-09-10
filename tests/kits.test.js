@@ -16,7 +16,7 @@ const kitNames = fs.readdirSync(kitsDir).filter((d) => fs.existsSync(path.join(k
 // Кит грузится в песочнице с заглушкой Phaser: при загрузке ему нужны только
 // Phaser.Scene.prototype, window и чистые модули game/*.js (index.html
 // подключает их раньше китов).
-const PURE = ["fontdata.js", "font.js", "layout.js", "random.js", "levels.js", "novel.js", "content.js", "stage.js"];
+const PURE = ["fontdata.js", "font.js", "layout.js", "random.js", "grid.js", "timeline.js", "save.js", "pool.js", "levels.js", "novel.js", "content.js", "stage.js"];
 function loadKit(name) {
   const src = fs.readFileSync(path.join(kitsDir, name, "kit.js"), "utf8");
   const window = { ZV_KITS: {}, ZV_GAME: {} };
@@ -74,7 +74,46 @@ for (const name of kitNames) {
       assert.ok(fs.existsSync(path.join(root, "content", m[1] + ".json")), `content/${m[1]}.json не найден`);
     }
   });
+
+  test(`${name}: время, хранилище и ключ сцены (правила недели 4)`, () => {
+    const { src } = loadKit(name);
+    // Таймлайн переживает «Ещё раз»: сцена переиспользуется, create() зовётся
+    // снова, и хвост прошлой партии выстрелит в новой. Отсюда tl.clear() в
+    // shutdown — тот же класс граблей, что Object.defineProperty без
+    // configurable в квесте.
+    if (/ZV\.timeline\.create\s*\(/.test(src)) {
+      assert.ok(/\.clear\s*\(/.test(src), "есть ZV.timeline.create, но нет tl.clear(): зови его в shutdown, иначе шаги прошлой партии сработают в новой");
+    }
+    // Прямой localStorage бросает в приватном окне iOS и в кадре галереи —
+    // причём на самом обращении к свойству, а не на getItem.
+    assert.ok(!/localStorage/.test(src), "сохранение только через ZV.save: прямой localStorage бросает в приватном окне iOS");
+    // Свой таймер переживает сцену: партия кончилась, а колбэк ещё стреляет.
+    assert.ok(!/\b(setInterval|setTimeout)\s*\(/.test(src), "время игры — ZV.timeline и scene.time.*, а не setTimeout/setInterval: свой таймер переживёт сцену");
+    // Кит регистрирует РОВНО одну сцену и ровно с ключом zv-play: мост
+    // «сюжет ↔ мини-игра» переименовывает её в zv-mini перед scene.add, а
+    // оболочка стартует по этому имени. Ключи анимаций (anims.create) — не
+    // про это и правилом не считаются.
+    const sceneKeys = [...src.matchAll(/Phaser\.Scene\.call\([^)]*?key:\s*"([^"]*)"/gs)].map((m) => m[1]);
+    assert.equal(sceneKeys.length, 1, `сцен в ките должно быть ровно одна, найдено ${sceneKeys.length}: ${sceneKeys.join(", ")}`);
+    for (const k of sceneKeys) {
+      assert.equal(k, "zv-play", `ключ сцены «${k}»: оболочка знает только zv-play, чужое имя не запустится`);
+    }
+  });
 }
+
+test("index.html: модули недели 4 подключены до game/content.js (валидаторы их зовут)", () => {
+  const html = fs.readFileSync(path.join(root, "index.html"), "utf8");
+  const at = (f) => html.indexOf(`game/${f}`);
+  const content = at("content.js");
+  assert.ok(content > 0, "index.html не подключает game/content.js");
+  for (const f of ["grid.js", "timeline.js", "save.js", "pool.js"]) {
+    const pos = at(f);
+    assert.ok(pos > 0, `index.html не подключает game/${f}`);
+    assert.ok(pos < content, `game/${f} подключён после content.js — валидатор его не найдёт`);
+  }
+  assert.ok(html.includes("<!-- modules: week4 -->"), "маркер modules: week4 потерян — новые модули будут вставлять кто куда");
+  assert.ok(html.includes("<!-- kits: week4 -->"), "маркер kits: week4 потерян");
+});
 
 test("index.html подключает каждый кит, а game/config.js знает все архетипы", () => {
   const html = fs.readFileSync(path.join(root, "index.html"), "utf8");

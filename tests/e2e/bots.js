@@ -109,6 +109,7 @@
       target = Math.max(50, Math.min(310, target));
       if (Math.abs(basket.x - target) > 2) sc.input.emit("pointermove", { x: target, y: 560 });
     }
+    // week4 bots
   };
 
   function step(game) {
@@ -160,5 +161,6 @@
       return { index: sc.index, total: sc.order.length, locked: sc.locked, over: sc.over,
         correct: typeof item.correct === "number" ? item.correct : -1, answers: item.answers.length, score: sc.score };
     }
+    // week4 probes
   };
 })(window);

@@ -36,10 +36,13 @@ function startServer() {
 const botsSource = fs.readFileSync(path.join(__dirname, "bots.js"), "utf8");
 
 // Открыть игру в iframe хоста. opts: { archetype, seed, params, prize, theme,
-// content, levelsUnchecked }. content — подмена content/<kind>.json ответом (экран
-// ошибок, сгенерированные уровни); levelsUnchecked — не гонять солвер при
-// загрузке (заведомо непроходимые уровни для сверки с ботом).
+// content, levelsUnchecked, clearStorage }. content — подмена content/<kind>.json
+// ответом (экран ошибок, сгенерированные уровни); levelsUnchecked — не гонять
+// солвер при загрузке (заведомо непроходимые уровни для сверки с ботом);
+// clearStorage (по умолчанию true) — стирать localStorage перед партией, иначе
+// сейв прошлого теста делает следующий прогон невоспроизводимым.
 async function openGame(browser, server, opts) {
+  opts = opts || {};
   const context = await browser.newContext({ viewport: { width: 360, height: 640 }, deviceScaleFactor: 1 });
   const errors = [];
   const page = await context.newPage();
@@ -60,6 +63,12 @@ async function openGame(browser, server, opts) {
       }
     });
   }, opts);
+  if (opts.clearStorage !== false) {
+    // Доступ к localStorage сам бросает в кадре с запрещёнными куками — под try.
+    await page.addInitScript(() => {
+      try { window.localStorage.clear(); } catch (e) { /* хранилища нет — и не надо */ }
+    });
+  }
   await page.addInitScript(botsSource);
   if (opts.content) {
     for (const [kind, body] of Object.entries(opts.content)) {
