@@ -110,6 +110,22 @@
       if (Math.abs(basket.x - target) > 2) sc.input.emit("pointermove", { x: target, y: 560 });
     }
     // week4 bots
+    ,
+    // Память: эксперт ведёт карту «позиция → значение» из всего, что уже
+    // видел (подглядка в начале раунда — тоже наблюдение), и открывает
+    // известную пару, иначе новую позицию. Тапы — настоящей мышью снаружи,
+    // здесь только выбор ячейки: бот отдаёт её тесту через memoryPick().
+    memory: function (sc) {
+      if (typeof sc.score === "number" && (!finite(sc.score) || sc.score < 0)) violation("счёт отрицательный или не число");
+      if (sc.open && sc.open.length > 2) violation("открыто больше двух карточек");
+      if (sc.tl && sc.tl.pending() > 50) violation("таймлайн течёт: шагов " + sc.tl.pending());
+      if (!sc.cards) return;
+      // Карта виденного пополняется каждый кадр: на подглядке видно всё.
+      if (state.memoryRound !== sc.roundIndex) { state.memoryRound = sc.roundIndex; state.seen = {}; }
+      for (var i = 0; i < sc.cards.length; i++) {
+        if (sc.cards[i].face || sc.cards[i].matched) state.seen[i] = sc.cards[i].id;
+      }
+    }
   };
 
   function step(game) {
@@ -162,5 +178,51 @@
         correct: typeof item.correct === "number" ? item.correct : -1, answers: item.answers.length, score: sc.score };
     }
     // week4 probes
+    ,
+    // Память: состояние поля для тестов, которые тапают мышью снаружи.
+    // busy — занят ли таймлайн: бот ждёт его, а не спит peekMs.
+    memory: function () {
+      var sc = global.ZV.game.scene.getScene("zv-play");
+      if (!sc || !sc.sys.isActive() || !sc.cards || !sc.layout) return null;
+      return {
+        round: sc.roundIndex + 1, rounds: sc.rounds.length,
+        open: (sc.open || []).slice(), found: sc.found, pairs: sc.pairsTotal,
+        moves: sc.movesLimit > 0 ? sc.movesLeft : -1,
+        busy: sc.tl.busy() || !!sc.peeking, over: !!sc.over,
+        cells: sc.layout.cells.map(function (c) {
+          return { i: c.i, x: c.cx, y: c.cy, matched: sc.cards[c.i] ? sc.cards[c.i].matched : false,
+            face: sc.cards[c.i] ? sc.cards[c.i].face : false };
+        })
+      };
+    },
+    // Что эксперт запомнил: позиция → значение. Тест выбирает ячейку по этой
+    // карте и тапает её настоящей мышью — без чтения приватных полей сцены.
+    memoryPick: function () {
+      var sc = global.ZV.game.scene.getScene("zv-play");
+      if (!sc || !sc.cards) return -1;
+      var seen = state.seen || {}, open = sc.open || [], i;
+      function closed(n) { return sc.cards[n] && !sc.cards[n].matched && !sc.cards[n].face; }
+      // Уже открыта одна карточка — ищем её пару среди виденных закрытых.
+      if (open.length === 1) {
+        var want = sc.cards[open[0]].id;
+        for (i = 0; i < sc.cards.length; i++) {
+          if (closed(i) && seen[i] === want) return i;
+        }
+        // Пары не помним — открываем неизвестную позицию (дешёвая разведка).
+        for (i = 0; i < sc.cards.length; i++) if (closed(i) && seen[i] === undefined) return i;
+        for (i = 0; i < sc.cards.length; i++) if (closed(i)) return i;
+        return -1;
+      }
+      // Ничего не открыто: если знаем пару целиком — берём её первую карточку.
+      var byValue = {};
+      for (i = 0; i < sc.cards.length; i++) {
+        if (!closed(i) || seen[i] === undefined) continue;
+        if (byValue[seen[i]] !== undefined) return byValue[seen[i]];
+        byValue[seen[i]] = i;
+      }
+      for (i = 0; i < sc.cards.length; i++) if (closed(i) && seen[i] === undefined) return i;
+      for (i = 0; i < sc.cards.length; i++) if (closed(i)) return i;
+      return -1;
+    }
   };
 })(window);

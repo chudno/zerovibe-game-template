@@ -493,3 +493,115 @@ test("тема: логотип на «Играть» и «Результат» �
     assert.deepEqual(g.errors.filter((e) => !/Failed to load resource/.test(e)), [], "ошибки страницы");
   } finally { await g.close(); }
 });
+
+// week4: memory ------------------------------------------------------------
+// Синхронизация только по состоянию: бот ждёт busy === false (таймлайн
+// свободен), а не спит peekMs. Тапы — настоящей мышью по центрам ячеек, так
+// проверяются и тач-цели сетки.
+async function memoryState(g) {
+  for (let guard = 0; guard < 300; guard++) {
+    const st = await g.scene(() => window.__zvBot.memory());
+    if (st && !st.busy) return st;
+    await g.page.waitForTimeout(50);
+  }
+  return null;
+}
+
+// Один тап эксперта: ячейку выбирает бот внутри страницы по своей карте
+// виденного, тест только жмёт мышью.
+async function memoryTapExpert(g, st) {
+  const i = await g.scene(() => window.__zvBot.memoryPick());
+  if (i < 0) return false;
+  const cell = st.cells.find((c) => c.i === i);
+  if (!cell) return false;
+  await g.tap(cell.x, cell.y);
+  return true;
+}
+
+test("memory: эксперт с идеальной памятью проходит все раунды при moves = 2·pairs + 2", async () => {
+  const data = content("memory.json");
+  const rounds = data.rounds.map((r) => ({ ...r, moves: r.pairs * 2 + 2 }));
+  const g = await openGame(browser, server, {
+    archetype: "memory", seed: 21, params: { previewMs: 600, peekMs: 200, openMs: 60 },
+    content: { memory: { ...data, rounds } }
+  });
+  try {
+    const m = await g.mark();
+    await g.play();
+    await g.bot("memory", "expert");
+    for (let guard = 0; guard < 400; guard++) {
+      const st = await memoryState(g);
+      if (!st || st.over) break;
+      if (!(await memoryTapExpert(g, st))) break;
+    }
+    const fin = await g.waitFinish(m, 90000);
+    const rep = await g.botReport();
+    assert.equal(fin.won, true, JSON.stringify({ fin, rep }));
+    assert.equal(fin.meta.archetype, "memory");
+    assert.equal(fin.meta.rounds, rounds.length, "пройдены не все раунды: " + JSON.stringify(fin.meta));
+    // Первая встреча каждого значения может стоить промаха — но не больше.
+    const maxPairs = Math.max(...rounds.map((r) => r.pairs));
+    assert.ok(fin.meta.mistakes <= maxPairs * rounds.length, JSON.stringify(fin.meta));
+    clean(g, rep);
+  } finally { await g.close(); }
+});
+
+test("memory: новичок со случайными тапами не укладывается в минимальные ходы на 6 пар", async () => {
+  const data = content("memory.json");
+  const g = await openGame(browser, server, {
+    archetype: "memory", seed: 4,
+    params: { previewMs: 0, peekMs: 150, openMs: 60, freeMistakes: 0 },
+    // 14 = 2·pairs + 2, законный минимум валидатора: идеальная память проходит,
+    // случайная игра (≈18–20 ходов на 6 пар) — нет.
+    content: { memory: { ...data, rounds: [{ name: "Наугад", hint: "Найди пары", pairs: 6, moves: 14 }] } }
+  });
+  try {
+    const m = await g.mark();
+    await g.play();
+    for (let guard = 0; guard < 200; guard++) {
+      const st = await memoryState(g);
+      if (!st || st.over) break;
+      // Память нулевая: случайная закрытая ячейка (сид игры фиксирован).
+      const free = st.cells.filter((c) => !c.matched && !c.face);
+      if (!free.length) break;
+      const pick = free[(guard * 7 + 3) % free.length];
+      await g.tap(pick.x, pick.y);
+    }
+    const fin = await g.waitFinish(m, 60000);
+    assert.equal(fin.won, false, "случайная игра обязана проиграть по ходам: " + JSON.stringify(fin));
+    assert.equal(fin.meta.rounds, 0);
+    clean(g);
+  } finally { await g.close(); }
+});
+
+test("memory: один сид — одна раскладка (та же последовательность тапов даёт тот же итог)", async () => {
+  const data = content("memory.json");
+  const one = { ...data, rounds: [{ name: "Разминка", hint: "Найди пары", pairs: 4, moves: 12 }] };
+  const run = async () => {
+    const g = await openGame(browser, server, {
+      archetype: "memory", seed: 11, params: { previewMs: 0, peekMs: 150, openMs: 60 },
+      content: { memory: one }
+    });
+    try {
+      const m = await g.mark();
+      await g.play();
+      for (let guard = 0; guard < 60; guard++) {
+        const st = await memoryState(g);
+        if (!st || st.over) break;
+        // Обход поля по порядку — одинаковый в обоих прогонах.
+        const free = st.cells.filter((c) => !c.matched && !c.face);
+        if (!free.length) break;
+        await g.tap(free[0].x, free[0].y);
+      }
+      const fin = await g.waitFinish(m, 60000);
+      clean(g);
+      return fin;
+    } finally { await g.close(); }
+  };
+  const a = await run();
+  const b = await run();
+  assert.equal(a.meta.mistakes, b.meta.mistakes, JSON.stringify({ a: a.meta, b: b.meta }));
+  assert.equal(a.meta.pairs, b.meta.pairs);
+  assert.equal(a.meta.moves, b.meta.moves);
+  assert.equal(a.score, b.score);
+});

@@ -1,0 +1,19 @@
+{
+  "rounds": [
+    { "name": "Разминка", "hint": "Найди одинаковые", "pairs": 4 },
+    { "name": "Смена", "hint": "Стало больше", "pairs": 6, "moves": 16 },
+    { "name": "Финал", "hint": "Последний заказ", "pairs": 8, "moves": 22 }
+  ],
+  "cards": [
+    { "id": "box", "title": "Коробка", "icon": "box", "color": "#4f7cff" },
+    { "id": "stamp", "title": "Печать", "icon": "stamp", "color": "#ffd23f" },
+    { "id": "letter", "title": "Письмо", "icon": "letter", "color": "#2e9e5b" },
+    { "id": "parcel", "title": "Посылка", "icon": "parcel", "color": "#ff5f6d" },
+    { "id": "keys", "title": "Ключи", "color": "#9b59b6" },
+    { "id": "phone", "title": "Телефон", "color": "#1abc9c" },
+    { "id": "map", "title": "Карта", "color": "#d9a100" },
+    { "id": "badge", "title": "Бейдж", "color": "#7f8cff" },
+    { "id": "thermos", "title": "Термос", "color": "#e06c3b" },
+    { "id": "notes", "title": "Блокнот", "color": "#5aa9e6" }
+  ]
+}
