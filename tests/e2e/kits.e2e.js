@@ -119,7 +119,7 @@ test("quiz: верные ответы дают победу и карточку 
   } finally { await n.close(); }
 });
 
-test("persona: исход — один из типов, у него приз; сид фиксирует порядок вопросов", async () => {
+test("persona: исход — один из типов, без приза; сид фиксирует порядок вопросов", async () => {
   const data = content("persona.json");
   const g = await openGame(browser, server, { archetype: "persona", seed: 5 });
   try {
@@ -130,7 +130,7 @@ test("persona: исход — один из типов, у него приз; с
     const type = data.types.find((t) => t.id === fin.outcome);
     assert.ok(type, "outcome не из списка типов: " + fin.outcome);
     assert.equal(fin.won, true);
-    assert.equal(fin.prize.code, type.prize.code);
+    assert.equal(fin.prize, undefined, "тест без брендирования не выдаёт приз");
     assert.equal(fin.meta.type, type.id);
     clean(g);
     // Тот же сид → тот же исход при тех же ответах.
@@ -146,22 +146,50 @@ test("persona: исход — один из типов, у него приз; с
   } finally { await g.close(); }
 });
 
-test("wheel: три подачи выдают приз из списка с ненулевым весом, без «Ещё раз»", async () => {
+// Брендированный контент (скилл branding): у типа задан prize — карточка приза
+// возвращается на экран результата, код уходит наружу.
+test("persona: у типа с prize карточка приза приходит в finish", async () => {
+  const data = content("persona.json");
+  const branded = JSON.parse(JSON.stringify(data));
+  branded.types.forEach((t, i) => {
+    t.prize = { title: "Промокод типа", code: "TYPE" + i, text: "Скидка на первый заказ", button: "", url: "" };
+  });
+  const g = await openGame(browser, server, { archetype: "persona", seed: 5, content: { persona: branded } });
+  try {
+    const m = await g.mark();
+    await g.play();
+    await answerAll(g, () => 0);
+    const fin = await g.waitFinish(m, 20000);
+    const type = branded.types.find((t) => t.id === fin.outcome);
+    assert.ok(type, "outcome не из списка типов: " + fin.outcome);
+    assert.equal(fin.prize.code, type.prize.code);
+    clean(g);
+  } finally { await g.close(); }
+});
+
+test("wheel: три подачи выдают исход из списка с ненулевым весом, без приза и «Ещё раз»", async () => {
   const items = content("wheel.json").items;
   const check = (fin) => {
     const it = items.find((i) => i.id === fin.outcome);
-    assert.ok(it && it.weight > 0, "приз не из списка или с нулевым весом: " + JSON.stringify(fin));
-    assert.equal(fin.prize.code, it.code);
+    assert.ok(it && it.weight > 0, "исход не из списка или с нулевым весом: " + JSON.stringify(fin));
+    assert.equal(fin.prize, undefined, "розыгрыш без брендирования карточку приза не рисует");
     assert.equal(fin.won, true);
+    return it;
   };
   // Колесо.
   let g = await openGame(browser, server, { archetype: "wheel", seed: 9, params: { spinMs: 900 } });
   try {
     await g.play();
     const fin = await g.expect("finish", () => g.tap(180, 520), 15000);
-    check(fin); assert.equal(fin.meta.presentation, "wheel");
+    const it = check(fin); assert.equal(fin.meta.presentation, "wheel");
     clean(g);
     await g.page.waitForTimeout(300);
+    // Заголовок экрана результата — сам исход, а не «Поздравляем!».
+    const shown = await g.scene((title) => {
+      const sc = window.ZV.game.scene.getScene("zv-result");
+      return !!sc.children.list.find((o) => o.text === title);
+    }, it.title);
+    assert.equal(shown, true, "на экране результата нет заголовка исхода «" + it.title + "»");
     const hasReplay = await g.scene(() => {
       const sc = window.ZV.game.scene.getScene("zv-result");
       return !!sc.children.list.find((o) => o.text === "Ещё раз");
@@ -191,6 +219,22 @@ test("wheel: три подачи выдают приз из списка с не
     await g.play();
     const fin = await g.expect("finish", () => g.tap(180, 320), 15000);
     check(fin); assert.equal(fin.meta.presentation, "lootbox");
+    clean(g);
+  } finally { await g.close(); }
+});
+
+// Брендированный контент (скилл branding): у исходов есть code — карточка
+// приза на экране результата и код наружу, как было до разделения.
+test("wheel: у исхода с code приходит приз с этим кодом", async () => {
+  const branded = JSON.parse(JSON.stringify(content("wheel.json")));
+  branded.items.forEach((it, i) => { it.code = "SPIN" + i; });
+  const g = await openGame(browser, server, { archetype: "wheel", seed: 9, params: { spinMs: 900 }, content: { wheel: branded } });
+  try {
+    await g.play();
+    const fin = await g.expect("finish", () => g.tap(180, 520), 15000);
+    const it = branded.items.find((i) => i.id === fin.outcome);
+    assert.ok(it && it.weight > 0, "исход не из списка: " + JSON.stringify(fin));
+    assert.equal(fin.prize.code, it.code);
     clean(g);
   } finally { await g.close(); }
 });

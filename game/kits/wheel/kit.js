@@ -1,8 +1,9 @@
-// Кит «Розыгрыш»: одно действие — и приз по весам из content/wheel.json.
-// Три подачи одной механики (params.presentation):
-//   wheel    — колесо секторов, по нему бежит подсветка и замирает на призе;
-//   scratch  — скретч-карта: палец стирает серый слой, под ним приз;
-//   lootbox  — коробка: тап, тряска, крышка открывается, приз всплывает.
+// Кит «Розыгрыш»: одно действие — и исход по весам из content/wheel.json.
+// Исход самоценен (что тебя ждёт сегодня); приз с кодом — необязательный слой
+// брендированной игры, см. finish. Три подачи (params.presentation):
+//   wheel    — колесо секторов, по нему бежит подсветка и замирает на исходе;
+//   scratch  — скретч-карта: палец стирает серый слой, под ним исход;
+//   lootbox  — коробка: тап, тряска, крышка открывается, исход всплывает.
 // Колесо не вращается картинкой: произвольный угол мылит пиксель-арт и текст,
 // а бегущая подсветка по неподвижным секторам читается так же и остаётся
 // пиксельно ровной. Вес сектора = вероятность — его подтверждает человек.
@@ -72,7 +73,7 @@
     var n = scene.items.length;
     var step = 360 / n;
 
-    ZV.ui.hint(scene, W / 2, 80, "Крути и забирай приз");
+    ZV.ui.hint(scene, W / 2, 80, "Крути колесо");
 
     var g = scene.add.graphics();
     scene.items.forEach(function (it, i) {
@@ -122,8 +123,8 @@
     scene.busy = true;
     scene.spinBtn.box.disableInteractive().setAlpha(0.5);
     var n = scene.items.length;
-    var prize = global.ZV.prizes.pick(scene.items);
-    var target = scene.items.indexOf(prize);
+    var it = global.ZV.prizes.pick(scene.items);
+    var target = scene.items.indexOf(it);
     var start = Math.max(0, scene.hlIndex);
     var steps = 3 * n + ((target - start) % n + n) % n;
     var counter = { v: 0 };
@@ -132,7 +133,7 @@
       onUpdate: function () { scene.highlight((start + Math.floor(counter.v)) % n); },
       onComplete: function () {
         scene.highlight(target);
-        blink(scene, scene.hl, 3, function () { finish(scene, prize); });
+        blink(scene, scene.hl, 3, function () { finish(scene, it); });
       }
     });
   }
@@ -158,18 +159,18 @@
     var ZV = global.ZV;
     var W = ZV.WIDTH;
     var cw = 280, ch = 180, x0 = (W - cw) / 2, y0 = 210;
-    var prize = ZV.prizes.pick(scene.items);
-    scene.prize = prize;
+    var it = ZV.prizes.pick(scene.items);
+    scene.prize = it;
 
     ZV.ui.hint(scene, W / 2, 120, "Потри карту пальцем");
 
-    // Подложка с призом.
+    // Подложка с исходом.
     scene.add.rectangle(W / 2, y0 + ch / 2, cw, ch, 0x1b1f33).setStrokeStyle(2, 0xffffff, 0.18);
-    ZV.ui.text(scene, W / 2, y0 + 62, prize.title, {
+    ZV.ui.text(scene, W / 2, y0 + 62, it.title, {
       size: 2, align: "center", wordWrap: { width: cw - 30 }
     }).setOrigin(0.5);
-    if (prize.code) {
-      ZV.ui.text(scene, W / 2, y0 + 112, prize.code, {
+    if (it.code) {
+      ZV.ui.text(scene, W / 2, y0 + 112, it.code, {
         size: 2, color: ZV.SECONDARY
       }).setOrigin(0.5);
     }
@@ -208,7 +209,7 @@
     function reveal() {
       scene.busy = true;
       rt.clear();
-      scene.time.delayedCall(700, function () { finish(scene, prize); });
+      scene.time.delayedCall(700, function () { finish(scene, it); });
     }
     scene.input.on("pointermove", rub);
     scene.input.on("pointerdown", rub);
@@ -228,11 +229,11 @@
   }
 
   // Тряска — сдвиги на целые пиксели по таймеру, потом смена картинки на
-  // открытую и приз, всплывающий из коробки.
+  // открытую и исход, всплывающий из коробки.
   function openBox(scene, box, bx, by) {
     if (scene.over || scene.busy) return;
     scene.busy = true;
-    var prize = global.ZV.prizes.pick(scene.items);
+    var it = global.ZV.prizes.pick(scene.items);
     var shakes = Math.max(6, Math.round(S.spinMs / 70));
     var i = 0;
     scene.time.addEvent({
@@ -243,13 +244,13 @@
         if (i === shakes) {
           box.x = bx;
           box.setTexture("boxOpen");
-          var t = global.ZV.ui.text(scene, bx, by - 40, prize.title, {
+          var t = global.ZV.ui.text(scene, bx, by - 40, it.title, {
             size: 2, color: global.ZV.SECONDARY, align: "center", wordWrap: { width: 260 }
           }).setOrigin(0.5).setDepth(1).setAlpha(0);
           scene.tweens.add({
             targets: t, y: by - 160, alpha: 1, duration: 600, ease: "Back.easeOut",
             onUpdate: function () { t.y = Math.round(t.y); },
-            onComplete: function () { scene.time.delayedCall(700, function () { finish(scene, prize); }); }
+            onComplete: function () { scene.time.delayedCall(700, function () { finish(scene, it); }); }
           });
         }
       }
@@ -274,19 +275,24 @@
   }
 
   // --- итог -----------------------------------------------------------------
-  function finish(scene, prize) {
+  // Исход сам по себе и есть результат: заголовок и текст на экране результата.
+  // Карточка приза — только у брендированного контента, где у исхода есть code;
+  // тогда title и text уходят в карточку, а заголовок экрана — поздравление
+  // (иначе одно и то же было бы напечатано дважды).
+  function finish(scene, it) {
     if (scene.over) return;
     scene.over = true;
+    var prize = it.code ? it : null;
     global.ZV.finish(scene, {
       score: 0,
       hideScore: true,
       won: true,
-      title: "Поздравляем!",
-      text: "",
+      title: prize ? "Поздравляем!" : it.title,
+      text: prize ? "" : (it.text || ""),
       prize: prize,
-      outcome: prize.id,
+      outcome: it.id,
       replay: S.replay,
-      meta: { archetype: "wheel", presentation: S.presentation, prize: prize.id }
+      meta: { archetype: "wheel", presentation: S.presentation, prize: it.id }
     });
   }
 
