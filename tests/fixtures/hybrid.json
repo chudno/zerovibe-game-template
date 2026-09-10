@@ -32,6 +32,7 @@
         "startLabel": "Ловить",
         "rules": "Лови пакеты, пропускай мусор",
         "outcomes": [
+          { "if": { "score": { "gte": 3 } }, "goto": "lift_fast", "add": { "hurry": 1 } },
           { "if": { "won": true }, "goto": "lift_fast", "add": { "hurry": 1 } },
           { "goto": "stairs" }
         ]

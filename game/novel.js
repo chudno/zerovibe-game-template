@@ -287,6 +287,13 @@
     return outs[outs.length - 1];
   }
 
+  // Условие по счёту задано ТОЧНЫМ числом: `{eq: N}`. Голое число — это
+  // «не меньше», диапазон, а не точка; из-за точки решётка порогов может
+  // промахнуться мимо значения, и ветка ложно объявляется недостижимой.
+  function isExactGate(want) {
+    return isObj(want) && has(want, "eq") && typeof want.eq === "number";
+  }
+
   // Порог из одного условия: число само по себе («не меньше») или {gte|…}.
   function gateOf(want) {
     if (typeof want === "number") return want;
@@ -458,6 +465,7 @@
     // Перекрытые ветки мини-игры: конечный перебор по решётке won × счёт
     // (0, порог−1, порог, порог+1) — ветка, которую ни разу не выбрал
     // resolvePlay, недостижима, потому что верхняя срабатывает всегда.
+    var playTraps = {};
     Object.keys(nodes).forEach(function (id) {
       var n = nodes[id];
       if (!isObj(n.play) || !Array.isArray(n.play.outcomes) || !ex.nodes[id]) return;
@@ -474,18 +482,26 @@
           hit[n.play.outcomes.indexOf(res)] = true;
         });
       });
+      // Точное число по счёту — частая причина ЛОЖНОГО «недостижимо»:
+      // решётка перебирает пороги, а не все значения. Тогда подсказываем
+      // заменить точку на порог.
+      var exact = n.play.outcomes.some(function (o) {
+        return isObj(o) && isObj(o["if"]) && isExactGate(o["if"].score);
+      });
       n.play.outcomes.forEach(function (o, i) {
         if (hit[i] || !isObj(o)) return;
         errs.push("nodes." + id + ".play.outcomes[" + i + "]: эта ветка недостижима — предыдущая ветка срабатывает всегда" +
-          (gates.length ? "" : "; сравнивай счёт с порогом (`score: {gte: N}`)"));
+          (exact ? "; сравнивай счёт с порогом (`score: {gte: N}`), а не с точным числом" : ""));
       });
-      // Ни один исход не ведёт к концовке — общий обратный обход поймает
-      // состояние, но адресный текст автору понятнее.
-      var anyEnd = n.play.outcomes.some(function (o) { return isObj(o) && typeof o.goto === "string" && has(nodes, o.goto); });
-      if (!anyEnd) errs.push("nodes." + id + ".play: ни один исход не ведёт к концовке");
+      // Узел мини-игры оказался ловушкой: куда бы ни увела ветка, концовки
+      // оттуда не видно. Общая «ловушка» тут туманна — говорим про исходы.
+      if (ex.traps.indexOf(id) >= 0) {
+        playTraps[id] = true;
+        errs.push("nodes." + id + ".play: ни один исход не ведёт к концовке");
+      }
     });
     ex.traps.forEach(function (id) {
-      if (!ex.blank[id]) errs.push("nodes." + id + ": из него нет пути к концовке (ловушка)");
+      if (!ex.blank[id] && !playTraps[id]) errs.push("nodes." + id + ": из него нет пути к концовке (ловушка)");
     });
     return errs;
   }

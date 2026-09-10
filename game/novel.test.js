@@ -277,11 +277,35 @@ test("play: перекрытая ветка ловится фаззингом п
     { goto: "e2" }
   ];
   assert.deepEqual(N.check(ok), []);
-  // Без условий по счёту в тексте появляется подсказка про порог.
-  const noGate = withPlay();
-  noGate.nodes.p.play.outcomes = [{ if: { won: true }, goto: "e1" }, { if: { won: true }, goto: "e1" }, { goto: "e2" }];
-  errs = N.check(noGate);
+  // Точное число по счёту перекрыто порогом сверху — тут «недостижима»
+  // может быть ложью решётки, и автору подсказывают заменить точку порогом.
+  const exact = withPlay();
+  exact.nodes.p.play.outcomes = [
+    { if: { score: { gte: 5 } }, goto: "e1" },
+    { if: { score: { eq: 9 } }, goto: "e1" },
+    { goto: "e2" }
+  ];
+  errs = N.check(exact);
   assert.ok(errs.some((e) => e.includes("outcomes[1]") && e.includes("score: {gte: N}")), errs.join("; "));
+  // А без точных чисел подсказка про порог не лезет: перекрытие тут по won,
+  // и порог ничего бы не изменил.
+  const boolOnly = withPlay();
+  boolOnly.nodes.p.play.outcomes = [{ if: { won: true }, goto: "e1" }, { if: { won: true }, goto: "e1" }, { goto: "e2" }];
+  errs = N.check(boolOnly);
+  assert.ok(errs.some((e) => e.includes("outcomes[1]") && e.includes("недостижима")), errs.join("; "));
+  assert.ok(!errs.some((e) => e.includes("score: {gte: N}")), errs.join("; "));
+});
+
+test("play: все исходы уводят в петлю без концовки — адресный текст вместо общей ловушки", () => {
+  const d = withPlay();
+  // loop — узел без выхода к концовке; обе ветки мини-игры ведут туда.
+  d.nodes.loop = { text: "Петля", goto: "loop" };
+  d.nodes.p.play.outcomes = [{ if: { won: true }, goto: "loop" }, { goto: "loop" }];
+  const errs = N.check(d);
+  assert.ok(errs.some((e) => e === "nodes.p.play: ни один исход не ведёт к концовке"), errs.join("; "));
+  assert.ok(!errs.some((e) => e.includes("nodes.p: из него нет пути к концовке")), errs.join("; "));
+  // Про сам узел-петлю общая формулировка остаётся — он не узел мини-игры.
+  assert.ok(errs.some((e) => e.includes("nodes.loop: из него нет пути к концовке (ловушка)")), errs.join("; "));
 });
 
 test("play: не больше maxPlayNodes узлов мини-игры на сюжет", () => {

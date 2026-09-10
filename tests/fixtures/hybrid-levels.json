@@ -1,0 +1,38 @@
+{
+  "start": "brief",
+  "vars": { "run_score": 0 },
+  "chapters": ["brief"],
+  "nodes": {
+    "brief": {
+      "bg": "roof",
+      "portrait": "hero",
+      "speaker": "Курьер",
+      "text": "Лифт сломан, крыши рядом. Три перебежки — и ты у двери.",
+      "play": {
+        "kit": "platformer",
+        "params": { "lives": 1 },
+        "score": "run_score",
+        "startLabel": "Прыгать",
+        "rules": "Три крыши подряд, не падать",
+        "outcomes": [
+          { "if": { "won": true }, "goto": "done" },
+          { "goto": "fell" }
+        ]
+      }
+    },
+    "done": {
+      "bg": "door",
+      "portrait": "client",
+      "speaker": "Жилец",
+      "text": "«Через крыши? Ну вы даёте». Заказ принят.",
+      "end": { "outcome": "done", "title": "По крышам", "text": "Успел поверху.", "won": true }
+    },
+    "fell": {
+      "bg": "yard",
+      "portrait": "hero",
+      "speaker": "Курьер",
+      "text": "Сорвался на второй крыше. Дальше — пешком по лестнице.",
+      "end": { "outcome": "fell", "title": "Мимо", "text": "Пришлось по лестнице.", "won": false }
+    }
+  }
+}

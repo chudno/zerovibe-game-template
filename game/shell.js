@@ -906,7 +906,11 @@
     // событие родителю, экран не меняется. p: { step, total, meta }.
     progress: function (scene, p) {
       p = p || {};
-      post("progress", { step: p.step || 0, total: p.total || 0, meta: p.meta || {} });
+      var meta = p.meta || {};
+      // Внутри сюжета шаги привязываются к узлу так же, как finish, — иначе
+      // воронка партнёра рвётся ровно на многоэкранных китах.
+      if (returnTo) { meta.mini = true; meta.node = returnTo.node; }
+      post("progress", { step: p.step || 0, total: p.total || 0, meta: meta });
     },
 
     // Кит зовёт это в конце раунда: событие родителю + экран результата.

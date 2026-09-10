@@ -695,3 +695,46 @@ test("гибрид: проигрыш мини-игры — не конец, а �
     clean(g);
   } finally { await g.close(); }
 });
+
+test("гибрид: многоэкранная мини-игра — progress уровней несёт узел сюжета", async () => {
+  // Платформер шлёт progress на каждый уровень: внутри сюжета эти события
+  // обязаны быть привязаны к узлу так же, как finish, иначе воронка рвётся.
+  const data = content("levels.json");
+  const plans = data.levels.map((lv) => L.validateLevel(lv.map).solved.plan);
+  const g = await openGame(browser, server, {
+    archetype: "novel", seed: 1, params: { typeMs: 0 },
+    contentUrl: { novel: "/tests/fixtures/hybrid-levels.json" }
+  });
+  try {
+    const m = await g.mark();
+    await g.play();
+    await g.page.waitForTimeout(200);
+    const st = await g.scene(() => window.__zvBot.hybrid());
+    assert.equal(st.node, "brief");
+    await g.tap(st.start.x, st.start.y);
+    await g.page.waitForTimeout(500);
+    await g.bot("platformer", "expert", { plans });
+    const fin = await g.waitFinish(m, 120000);
+    assert.equal(fin.meta.mini, true);
+    assert.equal(fin.meta.node, "brief");
+    const all = (await g.events()).slice(m).filter((e) => e.type === "progress");
+    const mini = all.filter((e) => e.meta && e.meta.mini === true);
+    assert.equal(mini.length, data.levels.length, JSON.stringify(all));
+    mini.forEach((e, i) => {
+      assert.equal(e.meta.node, "brief", "progress мини-игры без узла: " + JSON.stringify(e));
+      assert.equal(e.step, i + 1);
+      assert.equal(e.total, data.levels.length);
+      assert.ok(typeof e.meta.level === "number", "своё meta кита обязано доехать: " + JSON.stringify(e));
+    });
+    // Собственный progress сюжета остаётся прежним — mini у него не всплывает.
+    const story = all.filter((e) => !e.meta || e.meta.mini !== true);
+    assert.equal(story.length, 1, JSON.stringify(story));
+    assert.equal(story[0].meta.mini, undefined);
+    // Возврат в сюжет состоялся, экрана результата не было.
+    await g.page.waitForTimeout(1500);
+    const after = await g.scene(() => window.__zvBot.hybrid());
+    assert.equal(after.storyAwake, true);
+    assert.ok(["done", "fell"].includes(after.node), after.node);
+    clean(g);
+  } finally { await g.close(); }
+});
