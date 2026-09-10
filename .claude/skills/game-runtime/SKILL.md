@@ -10,7 +10,7 @@ vendor/                      движок, локальная копия (НЕ �
 index.html                   <div id="game"> + подключение скриптов
 game/style.css               стили вокруг канвы (image-rendering!)
 game/config.js               window.ZV_GAME — настройка: params, theme, картинки, prize
-content/<kit>.json           тексты, исходы, уровни и сюжет китов (quiz, persona, wheel, levels, novel, quest)
+content/<kit>.json           тексты, исходы, уровни и сюжет китов (quiz, persona, wheel, levels, novel, quest, memory, clicker, sort)
 game/shell.js                window.ZV: экраны, ui/sprite/juice/floor/prizes
 game/fontdata.js + font.js   пиксельный шрифт: растр (генерируется) и метрики
 game/pixelfont.js            атлас шрифта → BitmapText
@@ -18,7 +18,12 @@ game/random.js               ZV.random — случайность с сидом 
 game/content.js              слияние params и проверка content/*.json
 game/balance.js              физика раннера числами (окно прыжка, реакция)
 game/levels.js               уровни платформера: карта → сетка, солвер проходимости, план для бота
-game/novel.js                сюжет новеллы/квеста: граф узлов, предметы, проверка по состояниям, рантайм
+game/novel.js                сюжет новеллы/квеста: граф узлов, предметы, узел play (мини-игра), проверка по состояниям, рантайм
+game/grid.js                 ZV.grid: сетка тач-целей целыми пикселями (раскладка, попадание, пары)
+game/timeline.js             ZV.timeline: лента шагов на модельном времени (вместо delayedCall)
+game/save.js                 ZV.save: рекорд/стадии как удобство; игра проходима при пустом хранилище
+game/pool.js                 ZV.pool: пул предметов с весами, категориями и антиповтором
+game/memory.js | clicker.js | sort.js   чистые ядра китов недели 4: раздача пар, солвер экономики, окно реакции ленты
 game/stage.js                сцена сюжетных китов: фон, портрет, панель с печатью, варианты, тост
 game/layout.js               геометрия: фон, сетка кадров, хитбокс
 game/main.js                 берёт кит по config.archetype
@@ -119,13 +124,14 @@ global.ZV.finish(scene, { score: 12, won: true, meta: {}, text: "препятс�
 (width/wrap/fit/sanitize), `ui.button/title/hint/backdrop/text`, `ui.choices`
 (столбик кнопок-вариантов с `set/color/centerOf`), `ui.fail`, `sprite.apply/playAnim`,
 `juice.squash/stretch/shadow/dust`, `floor`, `FLOOR_DEPTH`, `random`,
-`params`, `loadContent/content`, `prizes`, `progress`, `levels`, `novel`. Новый кит —
+`params`, `loadContent/content`, `prizes`, `progress`, `levels`, `novel`,
+`grid`, `timeline`, `save`, `pool`, `play` (мини-игра из сюжета, скилл `archetype-hybrid`). Новый кит —
 добавь `<script>` в `index.html` и имя архетипа в комментарий `config.js`,
 иначе тест не пропустит.
 
 ## config.js
 
-`title`, `archetype` (runner|catch|quiz|persona|wheel|platformer|novel|quest),
+`title`, `archetype` (runner|catch|quiz|persona|wheel|platformer|novel|quest|memory|clicker|sort),
 `params` (сложность кита, ключи — README кита), `theme`
 (name/primary/secondary/logoUrl — подпись над названием и два акцента),
 `prize` (приз, только у брендированной игры) и `assets` (`hero` с
