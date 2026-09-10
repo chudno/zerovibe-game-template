@@ -41,7 +41,7 @@
   // (10·k px) там используется. Числа совпадают с раскладкой оболочки и китов.
   var FONT = (typeof module !== "undefined" && module.exports) ? require("./font.js") : root.ZV_FONT;
   var AREAS = {
-    question:    { width: 300, lines: 4, k: 2 },          // вопрос квиза / теста, кегль 2
+    question:    { width: 300, lines: 4, k: 2 }, // вопрос квиза / теста, кегль 2
     answer:      { width: 270, lines: 2, k: 2, kMin: 1 }, // кнопка-вариант 64 px; кегль 1 — запас
     typeTitle:   { width: 300, lines: 2, k: 2, prefix: "Ты — " },
     typeText:    { width: 290, lines: 4, k: 1 },
@@ -49,19 +49,23 @@
     prizeCode:   { width: 200, lines: 1, k: 2, kMin: 1 },
     prizeText:   { width: 284, lines: 3, k: 1 },
     prizeButton: { width: 224, lines: 1, k: 2, kMin: 1 },
-    sector:      { width: 76,  lines: 2, k: 1 },          // сектор колеса (≤8 секторов)
-    sectorSmall: { width: 56,  lines: 2, k: 1 },          // сектор колеса (9–12 секторов)
+    sector:      { width: 76,  lines: 2, k: 1 }, // сектор колеса (≤8 секторов)
+    sectorSmall: { width: 56,  lines: 2, k: 1 }, // сектор колеса (9–12 секторов)
     levelName:   { width: 300, lines: 2, k: 2, kMin: 1 }, // заставка уровня (заголовок)
-    levelHint:   { width: 290, lines: 2, k: 1 },          // подсказка под ней
-    novelSpeaker:{ width: 200, lines: 1, k: 1 },          // имя говорящего над репликой
-    novelText:   { width: 312, lines: 5, k: 1 },          // реплика в панели новеллы
-    novelChoice: { width: 270, lines: 2, k: 1 },          // вариант ответа (кнопка 40 px: 1 строка кеглем 2 или 2 кеглем 1)
-    endTitle:    { width: 300, lines: 2, k: 2 },          // заголовок концовки
-    endText:     { width: 290, lines: 4, k: 1 },          // описание концовки
-    itemTitle:   { width: 260, lines: 1, k: 1 },          // название предмета в инвентаре и тосте
+    levelHint:   { width: 290, lines: 2, k: 1 }, // подсказка под ней
+    novelSpeaker:{ width: 200, lines: 1, k: 1 }, // имя говорящего над репликой
+    novelText:   { width: 312, lines: 5, k: 1 }, // реплика в панели новеллы
+    novelChoice: { width: 270, lines: 2, k: 1 }, // вариант ответа (кнопка 40 px: 1 строка кеглем 2 или 2 кеглем 1)
+    endTitle:    { width: 300, lines: 2, k: 2 }, // заголовок концовки
+    endText:     { width: 290, lines: 4, k: 1 }, // описание концовки
+    itemTitle:   { width: 260, lines: 1, k: 1 }, // название предмета в инвентаре и тосте
     // week4 areas: новая область — своя строка, в алфавитном порядке
-    memoryCard:  { width: 54,  lines: 2, k: 1 },          // подпись на карточке «памяти»: самая узкая ячейка (60 px минус поля)
-    novelRules:  { width: 300, lines: 1, k: 1 }           // строка-правило под кнопкой мини-игры
+    memoryCard:  { width: 54,  lines: 2, k: 1 }, // подпись на карточке «памяти»: самая узкая ячейка (60 px минус поля)
+    novelRules:  { width: 300, lines: 1, k: 1 }, // строка-правило под кнопкой мини-игры
+    // week4: clicker
+    careTitle:   { width: 64,  lines: 1, k: 1 }, // подпись кнопки ухода 72×72 у кликера
+    stageText:   { width: 290, lines: 2, k: 1 }, // строка стадии кликера под заголовком
+    stageTitle:  { width: 200, lines: 1, k: 2, kMin: 1 } // название стадии кликера (надпись и результат)
   };
   var MAX_LEN = 240;   // страховка от абзацев там, где ждём строку
 
@@ -387,6 +391,117 @@
 
   // По ключу на строку: новый кит дописывает СВОЮ строку под маркером и не
   // трогает чужие — иначе параллельные ветки дерутся за одну длинную строку.
+  // Кликер: форма данных здесь, ДОСТИЖИМОСТЬ цели — солвером экономики
+  // (game/clicker.js), тем же, что отдаёт план боту. Валидатор обязан
+  // работать и без opts: тогда берутся дефолты кита (CLICKER.PARAMS).
+  var CLICKER = (typeof module !== "undefined" && module.exports) ? require("./clicker.js") : root.ZV_CLICKER;
+  function validateClicker(data, opts) {
+    var errs = [];
+    var P = CLICKER.withDefaults(opts && opts.params);
+
+    var goal = data && data.goal;
+    if (!goal || typeof goal !== "object") errs.push("goal: объект {score, title, text}");
+    else {
+      if (!(Number.isInteger(goal.score) && goal.score >= 10)) errs.push("goal.score: целое не меньше 10");
+      textErr(errs, "goal", goal.title, "title", "endTitle");
+      if (goal.text !== undefined && typeof goal.text !== "string") errs.push("goal: text — строка");
+      else if (goal.text) fitErr(errs, "goal", goal.text, "text", "endText");
+    }
+
+    var stages = data && data.stages;
+    if (!Array.isArray(stages) || stages.length < 1 || stages.length > 6) {
+      errs.push("stages: массив от 1 до 6 стадий");
+    } else {
+      stages.forEach(function (st, i) {
+        var w = "stages[" + i + "]";
+        if (!st || typeof st !== "object") { errs.push(w + ": объект {at, title}"); return; }
+        if (!Number.isInteger(st.at) || st.at < 0) errs.push(w + ".at: целое не меньше 0");
+        else if (i === 0 && st.at !== 0) errs.push(w + ".at: первая стадия начинается с 0");
+        else if (i > 0 && Number.isInteger(stages[i - 1].at) && st.at <= stages[i - 1].at) {
+          errs.push(w + ".at: " + st.at + " не больше предыдущего " + stages[i - 1].at + " — стадии идут по возрастанию");
+        }
+        textErr(errs, w, st.title, "title", "stageTitle");
+        if (st.text !== undefined && typeof st.text !== "string") errs.push(w + ": text — строка");
+        else if (st.text) fitErr(errs, w, st.text, "text", "stageText");
+        if (st.color !== undefined && !/^#[0-9a-fA-F]{6}$/.test(String(st.color))) errs.push(w + ".color: цвет вида #2e9e5b");
+        if (st.art !== undefined && !/^[a-z0-9_-]{1,32}$/i.test(String(st.art))) errs.push(w + ".art: ключ картинки — латиница/цифры/-/_ до 32");
+      });
+      var last = stages[stages.length - 1];
+      if (goal && Number.isInteger(goal.score) && last && Number.isInteger(last.at) && last.at >= goal.score) {
+        errs.push("stages[" + (stages.length - 1) + "].at: " + last.at + " не меньше goal.score " + goal.score + " — последняя стадия никогда не покажется");
+      }
+    }
+
+    if (data && data.care !== undefined) {
+      if (!data.care || typeof data.care !== "object") errs.push("care: объект {title}");
+      else textErr(errs, "care", data.care.title, "title", "careTitle");
+    }
+
+    var ups = data && data.upgrades;
+    if (ups !== undefined && (!Array.isArray(ups) || ups.length > 6)) errs.push("upgrades: массив от 0 до 6 апгрейдов");
+    else if (Array.isArray(ups)) {
+      var ids = {};
+      ups.forEach(function (u, i) {
+        var w = "upgrades[" + i + "]";
+        if (!u || typeof u !== "object") { errs.push(w + ": объект {id, title, cost}"); return; }
+        if (!/^[a-z0-9_-]{1,24}$/i.test(String(u.id))) errs.push(w + ".id: латиница/цифры/-/_ до 24");
+        else if (ids[u.id] !== undefined) errs.push(w + ".id: «" + u.id + "» повторяется");
+        else ids[u.id] = i;
+        textErr(errs, w, u.title, "title", "itemTitle");
+        if (!(Number.isInteger(u.cost) && u.cost >= 1)) errs.push(w + ".cost — целое не меньше 1");
+        if (!(Number.isInteger(u.max) && u.max >= 1 && u.max <= 99)) errs.push(w + ".max: целое от 1 до 99");
+        var perTap = Number(u.perTap) || 0, perSec = Number(u.perSec) || 0;
+        if (!(perTap > 0 || perSec > 0)) errs.push(w + ": ни perTap, ни perSec — апгрейд ничего не делает");
+      });
+      ups.forEach(function (u, i) {
+        if (!u || typeof u !== "object" || u.needs === undefined) return;
+        var w = "upgrades[" + i + "]";
+        if (typeof u.needs !== "string" || ids[u.needs] === undefined) { errs.push(w + ".needs: апгрейда «" + u.needs + "» нет"); return; }
+        if (u.needs === u.id) { errs.push(w + ".needs: кольцо зависимостей " + u.id + " → " + u.id); return; }
+        // Кольцо: идём по needs, пока не упрёмся в конец или не вернёмся к началу.
+        var seen = [String(u.id)], cur = u.needs;
+        for (var g = 0; g < ups.length + 1 && cur !== undefined; g++) {
+          if (seen.indexOf(String(cur)) >= 0) { errs.push(w + ".needs: кольцо зависимостей " + seen.join(" → ") + " → " + cur); return; }
+          seen.push(String(cur));
+          var next = ups[ids[cur]];
+          cur = next && typeof next.needs === "string" ? next.needs : undefined;
+        }
+      });
+    }
+
+    if (errs.length) return errs;
+
+    // Солвер считает все апгрейды доступными, а карточек на экране столько,
+    // сколько showUpgrades: при нуле покупать физически нечем, и «цель
+    // достижима» стало бы враньём. Ловим это словами, а не моделью.
+    // showUpgrades в PARAMS солвера нет (экономику он не меняет), поэтому
+    // берём его из сырых opts, а не из P.
+    var raw = opts && opts.params ? opts.params.showUpgrades : undefined;
+    var show = typeof raw === "number" && isFinite(raw) ? Math.round(raw) : 3;
+    if (Array.isArray(ups) && ups.length > 0 && show < 1) {
+      errs.push("showUpgrades: 0 — карточек апгрейдов на экране нет, покупать нечем");
+      return errs;
+    }
+
+    // Достижимость: солвер на том же темпе, что и бот-эксперт. Обе стороны
+    // важны — недостижимая цель это тупик, а достижимая простыми тапами
+    // означает, что апгрейды и уход в игре лишние.
+    var best = CLICKER.best(data, P);
+    if (!best.reachable) {
+      errs.push("goal.score: " + data.goal.score + " не набирается за duration " + Math.round(P.duration / 1000) +
+        " с — при лучшей игре выходит " + best.score + ". Уменьши goal.score или удешеви апгрейды");
+      return errs;
+    }
+    var nov = CLICKER.novice(data, P);
+    if (nov.reached) {
+      errs.push("goal.score: " + data.goal.score + " набирается простыми тапами без апгрейдов (темп botTapsPerSec/4) — " +
+        "апгрейды не нужны, подними цель или удорожи стадии");
+    }
+    return errs;
+  }
+
+  // По ключу на строку: новый кит дописывает СВОЮ строку под маркером и не
+  // трогает чужие — иначе параллельные ветки дерутся за одну длинную строку.
   var validators = {
     quiz: validateQuiz,
     persona: validatePersona,
@@ -395,7 +510,8 @@
     novel: validateNovel,
     quest: validateQuest,
     // week4
-    memory: validateMemory
+    memory: validateMemory,
+    clicker: validateClicker
   };
 
   function validate(kind, data, opts) {

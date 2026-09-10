@@ -1,0 +1,57 @@
+{
+  "goal": {
+    "score": 400,
+    "title": "Вырос!",
+    "text": "Росток стал деревом"
+  },
+  "stages": [
+    {
+      "at": 0,
+      "title": "Семечко",
+      "text": "Всё начинается с малого",
+      "art": "stage1",
+      "color": "#2e9e5b"
+    },
+    {
+      "at": 120,
+      "title": "Росток",
+      "text": "Первый лист развернулся",
+      "art": "stage2",
+      "color": "#38bdf8"
+    },
+    {
+      "at": 380,
+      "title": "Деревце",
+      "text": "Ветки тянутся вверх",
+      "art": "stage3",
+      "color": "#ffd23f"
+    }
+  ],
+  "care": {
+    "title": "Полить"
+  },
+  "upgrades": [
+    {
+      "id": "soil",
+      "title": "Хорошая почва",
+      "cost": 45,
+      "perTap": 2,
+      "max": 3
+    },
+    {
+      "id": "sun",
+      "title": "Тёплый свет",
+      "cost": 120,
+      "perSec": 3,
+      "max": 2
+    },
+    {
+      "id": "rain",
+      "title": "Тёплый дождь",
+      "cost": 200,
+      "perTap": 3,
+      "max": 2,
+      "needs": "sun"
+    }
+  ]
+}

@@ -908,3 +908,87 @@ test("memory: один сид — одна раскладка (та же пос�
   assert.equal(a.meta.moves, b.meta.moves);
   assert.equal(a.score, b.score);
 });
+
+// week4: clicker. Сверка модели с движком: план и время считает солвер
+// (game/clicker.js) в node ДО запуска, бот-эксперт отыгрывает его в Chromium.
+// Тот же солвер стоит в валидаторе — значит «цель достижима» проверено дважды.
+const CLICKER = require("../../game/clicker.js");
+
+test("clicker: эксперт берёт цель по плану солвера и укладывается в его время", async () => {
+  const data = content("clicker.json");
+  const S = CLICKER.withDefaults({});
+  const best = CLICKER.best(data, S);
+  assert.ok(best.reachable, "солвер сам не берёт цель — правь content/clicker.json, а не тест");
+  const g = await openGame(browser, server, { archetype: "clicker", seed: 7 });
+  try {
+    const m = await g.mark();
+    await g.play();
+    await g.bot("clicker", "expert", { plan: best.plan, tapsPerSec: S.botTapsPerSec });
+    const fin = await g.waitFinish(m, 120000);
+    const rep = await g.botReport();
+    assert.equal(fin.won, true, JSON.stringify({ fin, rep, best }));
+    assert.ok(fin.score >= data.goal.score, JSON.stringify(fin));
+    assert.equal(fin.meta.archetype, "clicker");
+    // Запас на кадры браузера: модель считает шагом 100 мс, движок — кадрами.
+    assert.ok(fin.meta.seconds <= best.seconds * 1.35,
+      `движок ${fin.meta.seconds} с против модели ${best.seconds} с — экономика разошлась`);
+    assert.ok(fin.meta.upgrades > 0 && fin.meta.careUses > 0, JSON.stringify(fin.meta));
+    // Движок обязан выкупить те же ступени, что и модель, а не добраться до
+    // цели своим путём. Хвост плана в счёт не идёт: цель приходит раньше, чем
+    // очередь кончается, и модель бросает её ровно так же — сверяем с ЕЁ
+    // покупками. Без этой строки бот мог молча не купить ничего.
+    const model = CLICKER.simulate(data, S, { taps: true, care: true, plan: best.plan.slice() });
+    assert.equal(fin.meta.upgrades, model.bought.length,
+      `движок купил ${fin.meta.upgrades} ступеней против ${model.bought.length} у модели: ${JSON.stringify({ rep, bought: model.bought, plan: best.plan })}`);
+    // Стадии открывались по ходу, а не разом в конце.
+    assert.ok(fin.meta.stage >= data.stages.length - 1, JSON.stringify(fin.meta));
+    clean(g, rep);
+  } finally { await g.close(); }
+});
+
+test("clicker: новичок (вчетверо реже, без покупок и полива) цель не берёт", async () => {
+  // Партия укорочена вдвое вместе с ценой тапа: содержимое остаётся
+  // проходимым (валидатор считает достижимость на ЭТИХ params), а ждать
+  // проигрыша новичка минуту с лишним незачем.
+  const g = await openGame(browser, server, { archetype: "clicker", seed: 7, params: { duration: 30000, tapPoints: 3 } });
+  try {
+    const m = await g.mark();
+    await g.play();
+    await g.bot("clicker", "novice", { tapsPerSec: CLICKER.PARAMS.botTapsPerSec });
+    const fin = await g.waitFinish(m, 60000);
+    const rep = await g.botReport();
+    assert.equal(fin.won, false, "игра проходится сама: " + JSON.stringify({ fin, rep }));
+    assert.equal(fin.meta.upgrades, 0);
+    assert.equal(fin.meta.careUses, 0);
+    clean(g, rep);
+  } finally { await g.close(); }
+});
+
+test("clicker: бросающее хранилище — эксперт всё равно побеждает, консоль чиста", async () => {
+  const data = content("clicker.json");
+  const S = CLICKER.withDefaults({});
+  const best = CLICKER.best(data, S);
+  const g = await openGame(browser, server, { archetype: "clicker", seed: 7 });
+  try {
+    // Хранилище бросает на самом обращении к свойству — так ведёт себя
+    // приватное окно iOS и кадр с запрещёнными куками. Ставим ловушку и
+    // перезапускаем партию из оболочки (кадр не пересоздаём: локаторы теста
+    // привязаны к нему), чтобы create() кита прошёл уже с битым хранилищем.
+    await g.frame.evaluate(() => {
+      Object.defineProperty(window, "localStorage", {
+        configurable: true,
+        get() { throw new Error("storage disabled"); }
+      });
+    });
+    const m = await g.mark();
+    // Перезапуск штатным путём встраивания (source: "zv-host") — тем же,
+    // которым игру перезапускает страница-хозяин.
+    await g.expect("start", () => g.frame.evaluate(() => window.postMessage({ source: "zv-host", type: "restart" }, "*")));
+    await g.bot("clicker", "expert", { plan: best.plan, tapsPerSec: S.botTapsPerSec });
+    const fin = await g.waitFinish(m, 120000);
+    const rep = await g.botReport();
+    assert.equal(fin.won, true, "прохождение зависит от localStorage: " + JSON.stringify({ fin, rep }));
+    assert.equal(fin.meta.record, false, "без хранилища рекорда быть не может");
+    clean(g, rep);
+  } finally { await g.close(); }
+});

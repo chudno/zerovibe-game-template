@@ -28,7 +28,7 @@ game/config.js        НАСТРОЙКИ ИГРЫ: название, архет�
 content/*.json        ТЕКСТЫ, ПРИЗЫ, УРОВНИ И СЮЖЕТ китов: quiz (вопросы),
                       persona (типы и вопросы), wheel (призы с весами), levels
                       (карты платформера), novel (граф сюжета), quest (граф
-                      с предметами)
+                      с предметами), clicker (цель, стадии, апгрейды)
 game/shell.js         экраны, мобильный контур, карточка приза, события
 game/fontdata.js      пиксельный шрифт растром (сгенерирован tests/fontgen.js)
 game/font.js          метрики шрифта: ширина, перенос, подбор кегля
@@ -56,9 +56,11 @@ game/pool.js          пул предметов с весами, категор�
                       формат и правила — .claude/skills/archetype-hybrid,
                       пример — tests/fixtures/hybrid.json
 game/memory.js        раздача «памяти»: ровно 2·pairs значений, каждое дважды
+game/clicker.js       экономика кликера числами: партия на модельном времени,
+                      солвер «достижима ли цель», план покупок для бота
 game/main.js          выбор кита по archetype
 game/kits/*/          киты: runner, catch, quiz, persona, wheel, platformer,
-                      novel, quest (+ README)
+                      novel, quest, clicker (+ README)
 assets/               только заглушки; настоящие картинки — по ссылке
 vendor/               Phaser 3.90.0 (MIT, LICENSE-phaser в корне)
 tests/                проверки, фикстуры и headless-прогон (в публикацию
@@ -72,7 +74,7 @@ docs/brief.md         бриф и концепт игры (в публикаци
 ## С чего начать
 
 1. `game/config.js` — название, `archetype` (`runner` | `catch` | `quiz` |
-   `persona` | `wheel` | `platformer` | `novel` | `quest`), цвета игры
+   `persona` | `wheel` | `platformer` | `novel` | `quest` | `clicker`), цвета игры
    (`theme`), `params`, секция `assets`.
 2. `game/kits/<archetype>/README.md` — параметры кита (ключи `params` с
    дефолтами) и формат его файла в `content/`.
@@ -256,6 +258,9 @@ iframe.contentWindow.postMessage({ source: "zv-host", type: "restart" }, "*");
   перекрытые ветки, потолок в три мини-игры, разбор исхода без `null`;
 - раздача «памяти» (`game/memory.test.js`): чётность раскладки на 200 сидах,
   повторяемость по сиду, поле влезает в сетку тач-целей;
+- экономика кликера (`game/clicker.test.js`): партия детерминирована, цель
+  достижима при лучшей игре и НЕ достижима вчетверо более медленным тапом без
+  покупок, кулдаун тапа держит потолок темпа, `needs` не блокирует очередь;
 - в статике нет имени платформы (игра живёт своей жизнью на чужом сайте), в
   корне нет `package.json`.
 

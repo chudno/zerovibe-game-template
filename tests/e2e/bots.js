@@ -115,9 +115,8 @@
       });
       target = Math.max(50, Math.min(310, target));
       if (Math.abs(basket.x - target) > 2) sc.input.emit("pointermove", { x: target, y: 560 });
-    }
+    },
     // week4 bots
-    ,
     // Память: эксперт ведёт карту «позиция → значение» из всего, что уже
     // видел (подглядка в начале раунда — тоже наблюдение), и открывает
     // известную пару, иначе новую позицию. Тапы — настоящей мышью снаружи,
@@ -137,6 +136,46 @@
       for (var i = 0; i < sc.cards.length; i++) {
         if (sc.cards[i].face || sc.cards[i].matched) state.seen[i] = sc.cards[i].id;
       }
+    },
+    // Кликер: эксперт тапает в темпе botTapsPerSec (лишнего движка не просим —
+    // тап эмулируется тем же pointerdown, что и палец), гасит нужду ниже 40 %
+    // и покупает по плану, который node посчитал солвером ДО запуска. Это
+    // сверка модели с движком: модель сказала «за 39 с» — бот обязан набрать.
+    // Новичок тапает вчетверо реже, ничего не покупает и не поливает.
+    clicker: function (sc, now) {
+      var st = global.__zvBot.clicker();
+      if (!st || st.over) return;
+      if (typeof sc.score === "number" && (!isFinite(sc.score) || sc.score < 0)) violation("счёт отрицательный или не число");
+      if (sc.tl && sc.tl.pending() >= 50) violation("таймлайн течёт: больше 50 шагов в очереди");
+      if (st.need < 0 || st.need > 100) violation("шкала нужды вне 0..100");
+
+      var rate = state.mode === "novice" ? state.tapsPerSec / 4 : state.tapsPerSec;
+      if (!state.lastTapAt) state.lastTapAt = 0;
+      var gap = 1000 / Math.max(0.1, rate);
+
+      if (state.mode !== "novice") {
+        // Уход важнее очков: пустая шкала режет тап вдвое до конца партии.
+        if (st.need < 40 && st.careReady) { sc.careBox.emit("pointerup"); return; }
+        // Покупка по плану. Голова очереди, ещё закрытая по needs, на экране
+        // не показана — её пропускаем и смотрим следующую позицию, ровно как
+        // simulate() в солвере. Иначе план вида «дорогое раньше того, что его
+        // открывает» встал бы навсегда, и бот перестал бы покупать вовсе.
+        var plan = state.plan || [];
+        for (var q = 0; q < plan.length; q++) {
+          var card = null;
+          for (var i = 0; i < st.upgrades.length; i++) {
+            if (st.upgrades[i].id === plan[q]) { card = st.upgrades[i]; break; }
+          }
+          if (!card) continue;                                   // закрыт или выкуплен — дальше по плану
+          if (card.level >= card.max) { plan.splice(q, 1); q -= 1; continue; }
+          if (st.score >= card.cost) { sc.cards[card.slot].box.emit("pointerup"); plan.splice(q, 1); return; }
+          break;                                                 // первая ВИДИМАЯ решает: копим на неё
+        }
+      }
+      if (now - state.lastTapAt < gap) return;
+      state.lastTapAt = now;
+      state.taps++;
+      sc.hero.emit("pointerdown");
     }
   };
 
@@ -155,6 +194,9 @@
       state.kind = kind; state.mode = mode || "expert";
       state.stopAt = typeof opts.stopAt === "number" ? opts.stopAt : Infinity;
       state.plans = opts.plans || null;
+      state.plan = (opts.plan || []).slice();
+      state.tapsPerSec = typeof opts.tapsPerSec === "number" ? opts.tapsPerSec : 5;
+      state.lastTapAt = 0; state.taps = 0;
       state.followKey = ""; state.follower = null; state.pad = { dir: 0, jump: false };
       state.frames = 0; state.violations = []; state.groundTs = 0; state.jumps = 0; state.stopped = false;
       state.inMini = false;
@@ -168,7 +210,7 @@
     },
     stop: function () { state.stopped = true; },
     report: function () {
-      return { frames: state.frames, violations: state.violations.slice(), jumps: state.jumps, seed: global.ZV ? global.ZV.seed : null };
+      return { frames: state.frames, violations: state.violations.slice(), jumps: state.jumps, taps: state.taps, planLeft: (state.plan || []).length, seed: global.ZV ? global.ZV.seed : null };
     },
     // Новелла: текущий узел, печать, видимые варианты — для управления мышью.
     novel: function () {
@@ -258,6 +300,25 @@
       for (i = 0; i < sc.cards.length; i++) if (closed(i) && seen[i] === undefined) return i;
       for (i = 0; i < sc.cards.length; i++) if (closed(i)) return i;
       return -1;
+    },
+    // Кликер: счёт, темп, стадия, нужда, готовность ухода и КООРДИНАТЫ карточек
+    // апгрейдов — бот тапает настоящей мышью, значит должен знать, куда.
+    clicker: function () {
+      var sc = global.ZV.game.scene.getScene("zv-play");
+      if (!sc || !sc.sys.isActive() || !sc.stages) return null;
+      var ups = [];
+      for (var i = 0; i < sc.cards.length; i++) {
+        var card = sc.cards[i];
+        if (card.up < 0 || !card.box.visible) continue;
+        var u = sc.ups[card.up];
+        ups.push({ id: u.id, cost: global.ZV_CLICKER.costOf(u, sc.levels[card.up]),
+          level: sc.levels[card.up], max: u.max, x: card.box.x, y: card.box.y, slot: i });
+      }
+      return {
+        score: Math.floor(sc.score), perTap: sc.perTapNow, perSec: sc.perSecNow,
+        stage: sc.stage, goal: sc.goal.score, need: Math.round(sc.need),
+        careReady: sc.elapsed >= sc.careReady, upgrades: ups, over: sc.over
+      };
     }
   };
 })(window);
