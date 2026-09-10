@@ -123,6 +123,13 @@ test("memory: пары, виды, сетка, ходы, подписи и пов
   assert.deepEqual(C.validate("memory", d), []);
   d = base(); d.rounds[0].moves = 0;
   assert.ok(C.validate("memory", d).some((e) => e.includes("moves: целое больше нуля")));
+  // Лимит из config.params проверяется тем же порогом, иначе непроходимая
+  // партия проходит проверку молча (у раунда своего moves нет).
+  assert.ok(C.validate("memory", base(), { moves: 6 }).some((e) => e.includes("6 ходов из params.moves на 4 пары — партия непроходима, нужно минимум 10")),
+    JSON.stringify(C.validate("memory", base(), { moves: 6 })));
+  assert.deepEqual(C.validate("memory", base(), { moves: 10 }), []);
+  d = base(); d.rounds[0].moves = 10;
+  assert.deepEqual(C.validate("memory", d, { moves: 6 }), [], "свой moves раунда перебивает params");
 
   d = base(); d.cards[1].id = "box";
   assert.ok(C.validate("memory", d).some((e) => e.includes("id «box» повторяется")));
@@ -135,9 +142,16 @@ test("memory: пары, виды, сетка, ходы, подписи и пов
   // Одинаковые подписи неотличимы на заглушках.
   d = base(); d.cards[1].title = "Коробка";
   assert.ok(C.validate("memory", d).some((e) => e.includes("не различить")));
-  // Подпись на карточке — 2 строки по ~9 знаков: длинное слово не влезает.
+  // Подпись на карточке — 2 строки по ширине ЯЧЕЙКИ, а ячейка тем уже, чем
+  // больше пар: «Коробка0» влезает при 8 парах и не влезает при 12.
   d = base(); d.cards[0].title = "Двенадцатьбукв";
   assert.ok(C.validate("memory", d).some((e) => e.includes("не влезает")));
+  d = { rounds: [{ name: "Финал", pairs: 12 }], cards: [] };
+  for (let i = 0; i < 12; i++) d.cards.push({ id: "c" + i, title: "Коробка" + i, icon: "i" + i });
+  assert.ok(C.validate("memory", d).some((e) => e.includes("не влезает — не больше 2 строк по ~6 знаков при 12 парах")),
+    JSON.stringify(C.validate("memory", d)));
+  d.rounds = [{ name: "Финал", pairs: 8 }];
+  assert.deepEqual(C.validate("memory", d), [], "при 8 парах ячейка шире — те же подписи влезают");
   d = base(); d.rounds[0].name = "Слово ".repeat(30).trim();
   assert.ok(C.validate("memory", d).some((e) => e.includes("name не влезает")));
 

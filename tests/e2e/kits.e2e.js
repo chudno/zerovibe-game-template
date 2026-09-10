@@ -518,11 +518,15 @@ async function memoryTapExpert(g, st) {
   return true;
 }
 
-test("memory: эксперт с идеальной памятью проходит все раунды при moves = 2·pairs + 2", async () => {
+// Эксперт играет БЕЗ подглядки (previewMs: 0) и без бесплатных промахов:
+// иначе это игрок с полной информацией, а не с памятью, и порог по ходам
+// проверяется с запасом в разы — регрессия «ход списывается вдвое чаще» не
+// упала бы. Бюджет считается точно: сумма 2·pairs + 2 по раундам.
+test("memory: эксперт с идеальной памятью укладывается в бюджет moves = 2·pairs + 2", async () => {
   const data = content("memory.json");
   const rounds = data.rounds.map((r) => ({ ...r, moves: r.pairs * 2 + 2 }));
   const g = await openGame(browser, server, {
-    archetype: "memory", seed: 21, params: { previewMs: 600, peekMs: 200, openMs: 60 },
+    archetype: "memory", seed: 21, params: { previewMs: 0, peekMs: 200, openMs: 60, freeMistakes: 0 },
     content: { memory: { ...data, rounds } }
   });
   try {
@@ -539,9 +543,37 @@ test("memory: эксперт с идеальной памятью проходи
     assert.equal(fin.won, true, JSON.stringify({ fin, rep }));
     assert.equal(fin.meta.archetype, "memory");
     assert.equal(fin.meta.rounds, rounds.length, "пройдены не все раунды: " + JSON.stringify(fin.meta));
+    const budget = rounds.reduce((s, r) => s + r.pairs * 2 + 2, 0);
+    assert.ok(fin.meta.moves <= budget, `ходов ${fin.meta.moves} при бюджете ${budget}: ` + JSON.stringify(fin.meta));
     // Первая встреча каждого значения может стоить промаха — но не больше.
-    const maxPairs = Math.max(...rounds.map((r) => r.pairs));
-    assert.ok(fin.meta.mistakes <= maxPairs * rounds.length, JSON.stringify(fin.meta));
+    const seenOnce = rounds.reduce((s, r) => s + r.pairs, 0);
+    assert.ok(fin.meta.mistakes <= seenOnce, `промахов ${fin.meta.mistakes} при пределе ${seenOnce}: ` + JSON.stringify(fin.meta));
+    clean(g, rep);
+  } finally { await g.close(); }
+});
+
+// Отдельно: подглядка не ломает партию и не мешает буферу тапов (порог по
+// ходам тут не при чём — с previewMs эксперт видит всё поле).
+test("memory: подглядка в начале раунда не ломает партию", async () => {
+  const data = content("memory.json");
+  const rounds = [{ ...data.rounds[0], moves: data.rounds[0].pairs * 2 + 2 }];
+  const g = await openGame(browser, server, {
+    archetype: "memory", seed: 21, params: { previewMs: 600, peekMs: 200, openMs: 60 },
+    content: { memory: { ...data, rounds } }
+  });
+  try {
+    const m = await g.mark();
+    await g.play();
+    await g.bot("memory", "expert");
+    for (let guard = 0; guard < 200; guard++) {
+      const st = await memoryState(g);
+      if (!st || st.over) break;
+      if (!(await memoryTapExpert(g, st))) break;
+    }
+    const fin = await g.waitFinish(m, 60000);
+    const rep = await g.botReport();
+    assert.equal(fin.won, true, JSON.stringify({ fin, rep }));
+    assert.equal(fin.meta.pairs, rounds[0].pairs);
     clean(g, rep);
   } finally { await g.close(); }
 });
@@ -571,6 +603,32 @@ test("memory: новичок со случайными тапами не укл�
     assert.equal(fin.won, false, "случайная игра обязана проиграть по ходам: " + JSON.stringify(fin));
     assert.equal(fin.meta.rounds, 0);
     clean(g);
+  } finally { await g.close(); }
+});
+
+// passRounds больше числа раскладов не должен делать победу невозможной:
+// иначе автор ставит 5 при трёх раундах и игра никогда не выиграна.
+test("memory: passRounds больше числа раскладов зажимается по нему", async () => {
+  const data = content("memory.json");
+  const rounds = [{ ...data.rounds[0], moves: data.rounds[0].pairs * 2 + 2 }];
+  const g = await openGame(browser, server, {
+    archetype: "memory", seed: 21,
+    params: { previewMs: 0, peekMs: 150, openMs: 60, freeMistakes: 0, passRounds: 5 },
+    content: { memory: { ...data, rounds } }
+  });
+  try {
+    const m = await g.mark();
+    await g.play();
+    await g.bot("memory", "expert");
+    for (let guard = 0; guard < 200; guard++) {
+      const st = await memoryState(g);
+      if (!st || st.over) break;
+      if (!(await memoryTapExpert(g, st))) break;
+    }
+    const fin = await g.waitFinish(m, 60000);
+    const rep = await g.botReport();
+    assert.equal(fin.won, true, "победа недостижима при passRounds > rounds.length: " + JSON.stringify({ fin, rep }));
+    clean(g, rep);
   } finally { await g.close(); }
 });
 

@@ -121,7 +121,12 @@
       if (sc.tl && sc.tl.pending() > 50) violation("таймлайн течёт: шагов " + sc.tl.pending());
       if (!sc.cards) return;
       // Карта виденного пополняется каждый кадр: на подглядке видно всё.
-      if (state.memoryRound !== sc.roundIndex) { state.memoryRound = sc.roundIndex; state.seen = {}; }
+      // Сбрасывается на смене раунда И на чистом поле (первый раунд после
+      // «Ещё раз» — тот же roundIndex, но раздача уже другая).
+      if (state.memoryRound !== sc.roundIndex || (sc.found === 0 && sc.movesUsed === 0 && !state.memoryFresh)) {
+        state.memoryRound = sc.roundIndex; state.seen = {}; state.memoryFresh = true;
+      }
+      if (sc.found > 0 || sc.movesUsed > 0) state.memoryFresh = false;
       for (var i = 0; i < sc.cards.length; i++) {
         if (sc.cards[i].face || sc.cards[i].matched) state.seen[i] = sc.cards[i].id;
       }

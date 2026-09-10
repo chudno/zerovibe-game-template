@@ -56,7 +56,10 @@
     S = ZV.params(DEFAULTS);
     this.over = false;
 
-    var c = ZV.content(this, "memory");
+    // Параметры кита едут в валидатор: лимит ходов из config.params должен
+    // проверяться тем же порогом, что и rounds[].moves (иначе непроходимая
+    // партия проходит проверку молча).
+    var c = ZV.content(this, "memory", { moves: S.moves });
     if (c.errors.length) {
       this.over = true;
       ZV.ui.fail(this, "Ошибки в content/memory.json", c.errors);
@@ -164,6 +167,12 @@
     }
   }
 
+  // Сколько раундов нужно для победы. passRounds зажат числом раскладов:
+  // passRounds 5 при трёх раундах иначе делает победу невозможной в принципе.
+  function passNeed(scene) {
+    return S.passRounds > 0 ? Math.min(S.passRounds, scene.rounds.length) : scene.rounds.length;
+  }
+
   function endRound(scene, cleared) {
     if (scene.over) return;
     scene.deadline = 0;
@@ -171,7 +180,7 @@
       scene.roundsDone += 1;
       scene.score += S.roundBonus;
     }
-    var need = S.passRounds > 0 ? S.passRounds : scene.rounds.length;
+    var need = passNeed(scene);
     global.ZV.progress(scene, {
       step: scene.roundIndex + 1, total: scene.rounds.length,
       meta: { pairs: scene.found, moves: scene.movesUsed, mistakes: scene.mistakes, cleared: !!cleared }
@@ -188,8 +197,7 @@
     if (scene.over) return;
     scene.over = true;
     scene.tl.clear();
-    var need = S.passRounds > 0 ? S.passRounds : scene.rounds.length;
-    var won = scene.roundsDone >= need;
+    var won = scene.roundsDone >= passNeed(scene);
     var record = scene.score > scene.best;
     if (record) scene.slot.set({ best: scene.score, rounds: scene.roundsDone });
     global.ZV.finish(scene, {
