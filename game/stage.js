@@ -143,6 +143,25 @@
     };
     st.showNext = function (on) { st.nextHint.setVisible(!!on); };
     st.showChoices = function (labels) { st.choices.set(labels); };
+
+    // Узел мини-игры: вместо «дальше» — кнопка с подписью и строка правил под
+    // ней. Мини-игра не должна начинаться по случайному тапу по панели.
+    st.showStart = function (label, rules, onStart) {
+      st.hideStart();
+      st.choices.set([]);
+      st.nextHint.setVisible(false);
+      st.startBtn = ZV.ui.button(scene, W / 2, CHOICES.y + 6, label || "Начать", function () {
+        if (onStart) onStart();
+      }, { width: CHOICES.width, height: 48 });
+      if (rules) {
+        st.rulesText = ZV.ui.text(scene, W / 2, CHOICES.y + 44, rules, { size: 1, color: "#9aa0b5", align: "center" })
+          .setOrigin(0.5, 0).setDepth(6);
+      }
+    };
+    st.hideStart = function () {
+      if (st.startBtn) { st.startBtn.box.destroy(); st.startBtn.text.destroy(); st.startBtn = null; }
+      if (st.rulesText) { st.rulesText.destroy(); st.rulesText = null; }
+    };
     st.highlight = function (i) {
       st.choices.color(i, Phaser.Display.Color.HexStringToColor(ZV.PRIMARY).color);
     };

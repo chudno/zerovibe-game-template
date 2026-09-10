@@ -36,8 +36,12 @@ function startServer() {
 const botsSource = fs.readFileSync(path.join(__dirname, "bots.js"), "utf8");
 
 // Открыть игру в iframe хоста. opts: { archetype, seed, params, prize, theme,
-// content, levelsUnchecked, clearStorage }. content — подмена content/<kind>.json
-// ответом (экран ошибок, сгенерированные уровни); levelsUnchecked — не гонять
+// content, contentUrl, playResult, levelsUnchecked, clearStorage }. content —
+// подмена content/<kind>.json ответом (экран ошибок, сгенерированные уровни);
+// contentUrl — адрес файла вместо боевого content/<kind>.json (фикстура);
+// playResult { won, score } — исход мини-игры сюжета подставляется без её
+// запуска (проверяем ветвление сюжета, а не физику кита);
+// levelsUnchecked — не гонять
 // солвер при загрузке (заведомо непроходимые уровни для сверки с ботом);
 // clearStorage (по умолчанию true) — стирать localStorage перед партией, иначе
 // сейв прошлого теста делает следующий прогон невоспроизводимым.
@@ -51,6 +55,8 @@ async function openGame(browser, server, opts) {
   // Перекрытия: config.js делает window.ZV_GAME = {…} — перехватываем присваивание.
   await page.addInitScript((o) => {
     window.ZV_TEST = { seed: o.seed, params: o.params || {}, levelsUnchecked: !!o.levelsUnchecked };
+    if (o.playResult) window.ZV_TEST.playResult = o.playResult;
+    if (o.contentUrl) window.ZV_TEST.contentUrl = o.contentUrl;
     let stored;
     Object.defineProperty(window, "ZV_GAME", {
       configurable: true,

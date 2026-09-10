@@ -65,6 +65,32 @@
 
   var lastResult = { score: 0, won: false, meta: {} };
 
+  // --- мост «сюжет ↔ мини-игра» ------------------------------------------
+  // Сюжет (novel/quest) на узле play зовёт ZV.play: сцена кита ставится в
+  // игру ПОД КЛЮЧОМ zv-mini (zv-play занят сюжетом), сюжетная сцена спит.
+  // Возврат делает ZV.finish, увидев непустой returnTo. Не стек, а одно
+  // поле: мини-игра внутри мини-игры запрещена.
+  var returnTo = null;
+  // Лента показа итога перед возвратом. Живёт вне сцен и тикает с шага игры
+  // (boot): партия уже кончилась, сцена кита своих обновлений не шлёт, а
+  // сюжетная спит — некому было бы её крутить.
+  var miniTl = null;
+  var MINI_KEY = "zv-mini";
+  var MINI_HOLD_MS = 900;   // 0,9 с: итог должен успеть попасть в глаза
+
+  function miniTick(delta) {
+    if (miniTl) miniTl.update(delta);
+  }
+
+  // Крупная строка итога поверх мини-игры («7 пар за 11 ходов» / счёт).
+  function miniSummary(scene, result) {
+    var text = result.title || ((result.score || 0) + " " + (result.text || "очков"));
+    var box = scene.add.rectangle(WIDTH / 2, HEIGHT / 2, WIDTH, 96, 0x101018, 0.92).setDepth(900);
+    box.setStrokeStyle(2, Phaser.Display.Color.HexStringToColor(SECONDARY).color, 0.7);
+    ui.text(scene, WIDTH / 2, HEIGHT / 2, text, { size: 2, color: SECONDARY, align: "center" })
+      .setOrigin(0.5).setDepth(901);
+  }
+
   // --- события родителю (контракт встраивания) ---------------------------
   function post(type, payload) {
     var msg = { source: "zv-game", type: type };
@@ -775,6 +801,10 @@
       scene: scenes
     });
     global.ZV.game = game; // ссылка для отладки из консоли
+    // Лента возврата из мини-игры живёт вне сцен: партия уже кончилась, сцена
+    // кита своих обновлений больше не шлёт, а сюжетная спит. Тик берём прямо
+    // с шага игры — иначе итог висел бы вечно.
+    game.events.on("step", function (time, delta) { miniTick(delta); });
     return game;
   }
 
@@ -784,6 +814,14 @@
     if (!d || d.source !== "zv-host") return;
     if (d.type === "restart" && game) {
       post("start");
+      // Перезапуск из мини-игры сюжета: снимаем её и забываем возврат, иначе
+      // следующий ZV.finish попробовал бы разбудить сцену прошлой партии.
+      if (returnTo || game.scene.getScene(MINI_KEY)) {
+        returnTo = null;
+        miniTl = null;
+        global.ZV_PLAY_PARAMS = {};
+        if (game.scene.getScene(MINI_KEY)) { game.scene.stop(MINI_KEY); game.scene.remove(MINI_KEY); }
+      }
       // Гасим то, что сейчас на экране: иначе результат остаётся поверх игры.
       game.scene.stop("zv-result");
       game.scene.stop("zv-menu");
@@ -826,6 +864,44 @@
     // Пул предметов с весами, категориями и антиповтором.
     pool: global.ZV_POOL,
 
+    // Сюжет запускает мини-игру: kit — имя из ZV_KITS, opts.params —
+    // перекрытие параметров только на эту партию, opts.onFinish(result) —
+    // куда вернуть итог, opts.node — id узла (уходит в meta события).
+    play: function (scene, kit, opts) {
+      opts = opts || {};
+      if (returnTo) throw new Error("мини-игра не может запускать мини-игру: узел play внутри мини-игры");
+      var entry = global.ZV_KITS && global.ZV_KITS[kit];
+      if (!entry) throw new Error("нет кита «" + kit + "» — проверь play.kit в сюжете");
+      global.ZV_PLAY_PARAMS = opts.params || {};
+      returnTo = { story: scene.scene.key, onFinish: opts.onFinish, node: opts.node || "" };
+      // Отладочный крючок автопрогона: сцена не поднимается вовсе, итог
+      // приходит через один тик ленты. В проде ZV_TEST не определён.
+      if (TEST.playResult) {
+        miniTl = global.ZV_TIMELINE.create();
+        var fake = TEST.playResult;
+        miniTl.add(0, function () {
+          var back = returnTo; returnTo = null;
+          global.ZV_PLAY_PARAMS = {};
+          miniTl = null;
+          var r = { score: fake.score || 0, won: !!fake.won, meta: { archetype: kit, mini: true, node: back.node }, text: "очков" };
+          lastResult = r;
+          // Событие шлём и здесь: автопрогону нужна та же точка синхронизации,
+          // что и у настоящей партии.
+          post("finish", { score: r.score, won: r.won, meta: r.meta });
+          if (back.onFinish) back.onFinish(r);
+        });
+        miniTl.update(1);
+        return;
+      }
+      var s = entry.createScenes(config)[0];
+      // Ключ выставляется ДО scene.add: проверено на живом Phaser 3.90 —
+      // сцена живёт под zv-mini, а zv-play сюжета в это время спит.
+      s.sys.settings.key = MINI_KEY;
+      game.scene.add(MINI_KEY, s, false);
+      scene.scene.sleep();          // не pause: pause оставляет ввод живым
+      game.scene.start(MINI_KEY);
+    },
+
     // Промежуточный прогресс многоэкранной игры (пройден уровень, глава):
     // событие родителю, экран не меняется. p: { step, total, meta }.
     progress: function (scene, p) {
@@ -848,10 +924,33 @@
         title: r.title || "", hideScore: !!r.hideScore,
         prize: prize || null, outcome: r.outcome || "", replay: r.replay !== false
       };
-      var payload = { score: lastResult.score, won: lastResult.won, meta: lastResult.meta };
+      var meta = lastResult.meta;
+      // Партия внутри сюжета: партнёр видит воронку по узлам, а автопрогон
+      // получает точку синхронизации без единого таймера.
+      meta.mini = !!returnTo;
+      if (returnTo) meta.node = returnTo.node;
+      var payload = { score: lastResult.score, won: lastResult.won, meta: meta };
       if (lastResult.outcome) payload.outcome = lastResult.outcome;
       if (prize) payload.prize = { id: prize.id || "", title: prize.title, code: prize.code || "" };
       post("finish", payload);
+      if (returnTo) {
+        // Возврат в сюжет: 0,9 с крупный итог поверх мини-игры, потом сцена
+        // гасится и снимается, сюжет просыпается. zv-result не показывается.
+        var back = returnTo;
+        var result = lastResult;
+        miniSummary(scene, result);
+        miniTl = global.ZV_TIMELINE.create();
+        miniTl.add(MINI_HOLD_MS, function () {
+          returnTo = null;
+          miniTl = null;
+          global.ZV_PLAY_PARAMS = {};
+          game.scene.stop(MINI_KEY);
+          game.scene.remove(MINI_KEY);
+          game.scene.wake(back.story);
+          if (back.onFinish) back.onFinish(result);
+        });
+        return;
+      }
       scene.scene.start("zv-result", lastResult);
     }
   };

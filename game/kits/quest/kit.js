@@ -53,6 +53,7 @@
     this.rt = N.create(c.data);
     if (S.startNode && c.data.nodes[S.startNode]) this.rt.load({ node: S.startNode, vars: this.rt.vars });
     this.chaptersSeen = {};
+    this.plays = [];        // итоги сыгранных мини-игр — уходят в финальный finish
     this.stage = STAGE.create(this, {
       typeMs: S.typeMs,
       onPanelTap: function () { tapPanel(self); },
@@ -138,6 +139,7 @@
     scene.stage.setBackground(n.bg);
     scene.stage.setPortrait(n.portrait);
     scene.stage.say(n.speaker, n.text);
+    scene.stage.hideStart();
     scene.waitNext = 0;
     drawShelf(scene);
     announce(scene);
@@ -152,6 +154,8 @@
   function typed(scene) {
     var rt = scene.rt;
     if (rt.ended()) { scene.stage.showNext(true); return; }
+    var p = rt.play();
+    if (p) { scene.stage.showStart(p.startLabel || "Начать", p.rules || "", function () { startPlay(scene); }); return; }
     if (rt.linear()) {
       scene.stage.showNext(true);
       if (S.autoNextMs > 0) scene.waitNext = scene.time.now + S.autoNextMs;
@@ -167,7 +171,28 @@
       return;
     }
     if (scene.rt.ended()) { finish(scene); return; }
+    // Узел мини-игры ждёт кнопку, а не тап по панели.
+    if (scene.rt.play()) return;
     if (scene.rt.linear()) advance(scene);
+  }
+
+  // Кнопка нажата: оболочка поднимает кит мини-игры, сюжет засыпает. Итог
+  // разбирает граф (resolvePlay внутри rt.playDone) — счёт в переменную,
+  // эффекты ветки, переход.
+  function startPlay(scene) {
+    var p = scene.rt.play();
+    if (scene.over || !p) return;
+    var node = scene.rt.id();
+    scene.stage.hideStart();
+    global.ZV.play(scene, p.kit, {
+      params: p.params,
+      node: node,
+      onFinish: function (r) {
+        scene.plays.push({ node: node, kit: p.kit, score: r.score || 0, won: !!r.won });
+        scene.rt.playDone(r);
+        show(scene);
+      }
+    });
   }
 
   function advance(scene) {
@@ -199,7 +224,7 @@
       text: end.text || "",
       prize: end.prize || null,
       outcome: end.outcome,
-      meta: { archetype: "quest", ending: end.outcome, steps: scene.rt.history.length, items: scene.rt.inventory(), vars: scene.rt.vars }
+      meta: { archetype: "quest", ending: end.outcome, steps: scene.rt.history.length, items: scene.rt.inventory(), vars: scene.rt.vars, plays: scene.plays }
     });
   }
 
