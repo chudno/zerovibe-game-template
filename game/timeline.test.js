@@ -68,6 +68,47 @@ test("clear отменяет незапущенное, flush выполняет 
   assert.equal(tl.busy(), false);
 });
 
+test("flush упёрся в потолок: остаток не молчит, а кричит в errors и в консоль", () => {
+  const tl = T.create();
+  let hits = 0;
+  const over = T.MAX_STEPS_PER_UPDATE + 500;
+  tl.repeat(over, 20, () => hits++);
+  const errs = [];
+  const orig = console.error;
+  console.error = (m) => errs.push(String(m));
+  try {
+    tl.flush();
+  } finally {
+    console.error = orig;
+  }
+  assert.equal(hits, T.MAX_STEPS_PER_UPDATE, "flush выполнил не потолок шагов");
+  assert.equal(tl.pending(), over - T.MAX_STEPS_PER_UPDATE);
+  assert.ok(tl.errors.some((e) => /flush не доделал/.test(e)), "кит получил половину ленты молча: " + tl.errors.join("; "));
+  assert.ok(errs.some((e) => /flush не доделал/.test(e)), "e2e не увидит недоделанный flush");
+  assert.ok(!tl.errors.some((e) => /сам себя/.test(e)), "ложный диагноз про самодобавление");
+});
+
+test("честно длинная лента (догон из фона) не обвиняется в самодобавлении", () => {
+  const tl = T.create();
+  let hits = 0;
+  const over = T.MAX_STEPS_PER_UPDATE * 2;
+  tl.repeat(over, 10, () => hits++);
+  const errs = [];
+  const orig = console.error;
+  console.error = (m) => errs.push(String(m));
+  try {
+    tl.update(60000);                       // телефон вернулся из фона
+    assert.equal(hits, T.MAX_STEPS_PER_UPDATE);
+    assert.equal(tl.pending(), over - T.MAX_STEPS_PER_UPDATE);
+    tl.update(0);                           // остаток догоняется следующим кадром
+  } finally {
+    console.error = orig;
+  }
+  assert.equal(hits, over, "остаток ленты потерян");
+  assert.deepEqual(tl.errors, [], "ложная ошибка на честной ленте: " + tl.errors.join("; "));
+  assert.deepEqual(errs, [], "e2e упадёт на ложном console error");
+});
+
 test("шаг, добавленный ИЗ шага, исполняется, а самодобавление без задержки ловится потолком", () => {
   const tl = T.create();
   const log = [];

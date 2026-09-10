@@ -10,8 +10,8 @@
 (function (root) {
   "use strict";
 
-  // Потолок шагов за один update: шаг, добавленный из шага с нулевой
-  // задержкой, иначе крутится вечно и вешает кадр.
+  // Потолок шагов за один update и за один flush: шаг, добавленный из шага с
+  // нулевой задержкой, иначе крутится вечно и вешает кадр.
   var MAX_STEPS_PER_UPDATE = 1000;
 
   // console берётся глобально: в браузере это console страницы (её ошибки
@@ -66,6 +66,9 @@
       // true — на этом кадре что-то сработало.
       update: function (delta) {
         time += Math.max(0, Number(delta) || 0);
+        // Лента, набранная ДО кадра, — честная работа (догон из фона), а не цикл;
+        // самодобавлением считается только то, что сверх неё.
+        var queued = steps.length;
         var fired = false, guard = 0;
         for (;;) {
           var next = null, ni = -1;
@@ -79,8 +82,11 @@
           fired = true;
           run(next);
           if (++guard >= MAX_STEPS_PER_UPDATE) {
-            tl.errors.push("таймлайн: больше " + MAX_STEPS_PER_UPDATE + " шагов за кадр — шаг добавляет сам себя без задержки");
-            report(tl.errors[tl.errors.length - 1]);
+            if (guard > queued) {
+              tl.errors.push("таймлайн: больше " + MAX_STEPS_PER_UPDATE + " шагов за кадр — шаг добавляет сам себя без задержки");
+              report(tl.errors[tl.errors.length - 1]);
+            }
+            // Честное переполнение остаётся молча: остаток догонится следующим кадром.
             break;
           }
         }
@@ -109,6 +115,12 @@
           run(next);
         }
         cursor = time;
+        // Иначе кит получил бы наполовину прокрученную ленту без единого признака.
+        if (steps.length) {
+          var msg = "таймлайн: лента длиннее потолка " + MAX_STEPS_PER_UPDATE + " — flush не доделал " + steps.length + " шагов";
+          tl.errors.push(msg);
+          report(msg);
+        }
         return tl;
       },
       time: function () { return time; }
