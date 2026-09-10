@@ -7,6 +7,7 @@ window.ZV_GAME = {
   // Архетип: "runner" | "catch" | "quiz" | "persona" | "wheel" | "platformer" |
   // "novel" | "quest" |
   // week4: сюда дописывается новый архетип, по слову на строку, в алфавитном порядке
+  // "clicker" |
   // Выбирает кит в game/kits/. Описание и параметры — game/kits/<archetype>/README.md.
   archetype: "runner",
 

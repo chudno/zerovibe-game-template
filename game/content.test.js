@@ -94,3 +94,58 @@ test("mergeParams: перекрытие, неизвестный ключ и чу
   assert.notEqual(C.mergeParams(d).params, d, "возвращается копия, дефолты кита не мутируют");
   assert.ok(C.mergeParams({ n: 1 }, { n: NaN }).warnings.length === 1);
 });
+
+// week4: clicker
+test("clicker: форма данных — цель, стадии, апгрейды, needs, подпись ухода", () => {
+  const base = () => ({
+    goal: { score: 400, title: "Вырос!", text: "Росток стал деревом" },
+    stages: [{ at: 0, title: "Семечко" }, { at: 120, title: "Росток" }, { at: 380, title: "Деревце" }],
+    care: { title: "Полить" },
+    upgrades: [
+      { id: "soil", title: "Хорошая почва", cost: 45, perTap: 2, max: 3 },
+      { id: "sun", title: "Тёплый свет", cost: 120, perSec: 3, max: 2 },
+      { id: "rain", title: "Тёплый дождь", cost: 200, perTap: 3, max: 2, needs: "sun" }
+    ]
+  });
+  assert.deepEqual(C.validate("clicker", base()), []);
+  const err = (mut) => { const d = base(); mut(d); return C.validate("clicker", d).join(" | "); };
+
+  assert.ok(err((d) => { d.goal.score = 5; }).includes("goal.score: целое не меньше 10"));
+  assert.ok(err((d) => { d.goal.score = 40.5; }).includes("goal.score: целое не меньше 10"));
+  assert.ok(C.validate("clicker", { stages: [] }).some((e) => e.includes("goal")));
+  // Стадии: первая с нуля, дальше строго вверх, не больше шести.
+  assert.ok(err((d) => { d.stages[0].at = 20; }).includes("первая стадия начинается с 0"));
+  assert.ok(err((d) => { d.stages[2].at = 100; }).includes("100 не больше предыдущего 120 — стадии идут по возрастанию"));
+  assert.ok(err((d) => { d.stages = []; }).includes("stages: массив от 1 до 6 стадий"));
+  assert.ok(err((d) => { d.stages[2].at = 400; }).includes("400 не меньше goal.score 400 — последняя стадия никогда не покажется"));
+  assert.ok(err((d) => { d.stages[1].color = "зелёный"; }).includes("color: цвет вида"));
+  // Апгрейды: цена, потолок, хоть какая-то польза, уникальный id.
+  assert.ok(err((d) => { d.upgrades[1].cost = 0; }).includes("upgrades[1].cost — целое не меньше 1"));
+  assert.ok(err((d) => { d.upgrades[1].max = 0; }).includes("upgrades[1].max: целое от 1 до 99"));
+  assert.ok(err((d) => { delete d.upgrades[2].perTap; }).includes("upgrades[2]: ни perTap, ни perSec — апгрейд ничего не делает"));
+  assert.ok(err((d) => { d.upgrades[1].id = "soil"; }).includes("«soil» повторяется"));
+  assert.ok(err((d) => { d.upgrades[2].needs = "moon"; }).includes("upgrades[2].needs: апгрейда «moon» нет"));
+  assert.ok(err((d) => { d.upgrades[1].needs = "rain"; }).includes("кольцо зависимостей"));
+  assert.ok(err((d) => { d.upgrades = new Array(7).fill({ id: "a", title: "А", cost: 1, perTap: 1, max: 1 }); })
+    .includes("upgrades: массив от 0 до 6 апгрейдов"));
+  // Тексты по метрикам: подпись ухода живёт в кнопке 72 px.
+  assert.ok(err((d) => { d.care.title = "Полить как следует и подкормить"; }).includes("не влезает"));
+  assert.ok(err((d) => { d.stages[0].title = "Совсем крошечное семечко в земле"; }).includes("не влезает"));
+});
+
+test("clicker: достижимость цели считает солвер, обе границы — ошибка", () => {
+  const base = () => JSON.parse(JSON.stringify(load("clicker.json")));
+  // Цель дороже, чем можно набрать за duration.
+  let d = base(); d.goal.score = 5000;
+  let e = C.validate("clicker", d);
+  assert.ok(e[0].includes("не набирается за duration") && e[0].includes("при лучшей игре выходит"), e.join(" | "));
+  // Обратный знак: цель берётся вчетверо более медленным тапом без покупок.
+  d = base(); d.goal.score = 50; d.stages = [{ at: 0, title: "Семечко" }];
+  e = C.validate("clicker", d);
+  assert.ok(e[0].includes("набирается простыми тапами без апгрейдов"), e.join(" | "));
+  // Валидатор обязан работать и БЕЗ opts (тогда дефолты кита), и с ними.
+  assert.deepEqual(C.validate("clicker", base()), []);
+  assert.deepEqual(C.validate("clicker", base(), { params: { duration: 75000, botTapsPerSec: 5 } }), []);
+  // Короткая партия ту же цель уже не берёт — ошибка про duration, а не молчание.
+  assert.ok(C.validate("clicker", base(), { params: { duration: 20000 } })[0].includes("не набирается за duration 20 с"));
+});

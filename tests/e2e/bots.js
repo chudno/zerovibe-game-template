@@ -108,8 +108,44 @@
       });
       target = Math.max(50, Math.min(310, target));
       if (Math.abs(basket.x - target) > 2) sc.input.emit("pointermove", { x: target, y: 560 });
-    }
+    },
     // week4 bots
+    // Кликер: эксперт тапает в темпе botTapsPerSec (лишнего движка не просим —
+    // тап эмулируется тем же pointerdown, что и палец), гасит нужду ниже 40 %
+    // и покупает по плану, который node посчитал солвером ДО запуска. Это
+    // сверка модели с движком: модель сказала «за 39 с» — бот обязан набрать.
+    // Новичок тапает вчетверо реже, ничего не покупает и не поливает.
+    clicker: function (sc, now) {
+      var st = global.__zvBot.clicker();
+      if (!st || st.over) return;
+      if (typeof sc.score === "number" && (!isFinite(sc.score) || sc.score < 0)) violation("счёт отрицательный или не число");
+      if (sc.tl && sc.tl.pending() >= 50) violation("таймлайн течёт: больше 50 шагов в очереди");
+      if (st.need < 0 || st.need > 100) violation("шкала нужды вне 0..100");
+
+      var rate = state.mode === "novice" ? state.tapsPerSec / 4 : state.tapsPerSec;
+      if (!state.lastTapAt) state.lastTapAt = 0;
+      var gap = 1000 / Math.max(0.1, rate);
+
+      if (state.mode !== "novice") {
+        // Уход важнее очков: пустая шкала режет тап вдвое до конца партии.
+        if (st.need < 40 && st.careReady) { sc.careBox.emit("pointerup"); return; }
+        // Покупка по плану: первая доступная позиция очереди, на которую хватает.
+        var want = (state.plan || [])[0];
+        if (want) {
+          for (var i = 0; i < st.upgrades.length; i++) {
+            var u = st.upgrades[i];
+            if (u.id !== want) continue;
+            if (u.level >= u.max) { state.plan.shift(); break; }
+            if (st.score >= u.cost) { sc.cards[u.slot].box.emit("pointerup"); state.plan.shift(); return; }
+            break;
+          }
+        }
+      }
+      if (now - state.lastTapAt < gap) return;
+      state.lastTapAt = now;
+      state.taps++;
+      sc.hero.emit("pointerdown");
+    }
   };
 
   function step(game) {
@@ -127,6 +163,9 @@
       state.kind = kind; state.mode = mode || "expert";
       state.stopAt = typeof opts.stopAt === "number" ? opts.stopAt : Infinity;
       state.plans = opts.plans || null;
+      state.plan = (opts.plan || []).slice();
+      state.tapsPerSec = typeof opts.tapsPerSec === "number" ? opts.tapsPerSec : 5;
+      state.lastTapAt = 0; state.taps = 0;
       state.followKey = ""; state.follower = null; state.pad = { dir: 0, jump: false };
       state.frames = 0; state.violations = []; state.groundTs = 0; state.jumps = 0; state.stopped = false;
       var game = global.ZV && global.ZV.game;
@@ -139,7 +178,7 @@
     },
     stop: function () { state.stopped = true; },
     report: function () {
-      return { frames: state.frames, violations: state.violations.slice(), jumps: state.jumps, seed: global.ZV ? global.ZV.seed : null };
+      return { frames: state.frames, violations: state.violations.slice(), jumps: state.jumps, taps: state.taps, planLeft: (state.plan || []).length, seed: global.ZV ? global.ZV.seed : null };
     },
     // Новелла: текущий узел, печать, видимые варианты — для управления мышью.
     novel: function () {
@@ -160,7 +199,26 @@
       if (!item) return null;
       return { index: sc.index, total: sc.order.length, locked: sc.locked, over: sc.over,
         correct: typeof item.correct === "number" ? item.correct : -1, answers: item.answers.length, score: sc.score };
-    }
+    },
     // week4 probes
+    // Кликер: счёт, темп, стадия, нужда, готовность ухода и КООРДИНАТЫ карточек
+    // апгрейдов — бот тапает настоящей мышью, значит должен знать, куда.
+    clicker: function () {
+      var sc = global.ZV.game.scene.getScene("zv-play");
+      if (!sc || !sc.sys.isActive() || !sc.stages) return null;
+      var ups = [];
+      for (var i = 0; i < sc.cards.length; i++) {
+        var card = sc.cards[i];
+        if (card.up < 0 || !card.box.visible) continue;
+        var u = sc.ups[card.up];
+        ups.push({ id: u.id, cost: global.ZV_CLICKER.costOf(u, sc.levels[card.up]),
+          level: sc.levels[card.up], max: u.max, x: card.box.x, y: card.box.y, slot: i });
+      }
+      return {
+        score: Math.floor(sc.score), perTap: sc.perTapNow, perSec: sc.perSecNow,
+        stage: sc.stage, goal: sc.goal.score, need: Math.round(sc.need),
+        careReady: sc.elapsed >= sc.careReady, upgrades: ups, over: sc.over
+      };
+    }
   };
 })(window);
