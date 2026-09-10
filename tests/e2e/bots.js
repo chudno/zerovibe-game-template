@@ -4,14 +4,21 @@
 // которая проходится сама). Список нарушений инвариантов читает тест.
 (function (global) {
   "use strict";
-  var state = { kind: "", mode: "", frames: 0, violations: [], groundTs: 0, jumps: 0, stopped: false };
+  var state = { kind: "", mode: "", frames: 0, violations: [], groundTs: 0, jumps: 0, stopped: false, inMini: false };
 
   function violation(msg) {
     if (state.violations.length < 20 && state.violations.indexOf(msg) < 0) state.violations.push(msg);
   }
   function finite(v) { return typeof v === "number" && isFinite(v); }
+  // Игровая сцена: обычно zv-play, но мини-игра сюжета (узел play) живёт под
+  // ключом zv-mini, пока zv-play спит — бот кита обязан видеть именно её.
+  // Кончилась мини-игра — сцена снимается, и бот кита обязан замолчать: иначе
+  // он лезет в поля снятой сцены и ломает ввод вернувшегося сюжета.
   function play(game) {
-    var sc = game.scene.getScene("zv-play");
+    var mini = game.scene.getScene("zv-mini");
+    if (state.inMini && !mini) { state.stopped = true; return null; }
+    if (mini) state.inMini = true;
+    var sc = mini || game.scene.getScene("zv-play");
     return sc && sc.sys.isActive() && !sc.over ? sc : null;
   }
 
@@ -129,6 +136,7 @@
       state.plans = opts.plans || null;
       state.followKey = ""; state.follower = null; state.pad = { dir: 0, jump: false };
       state.frames = 0; state.violations = []; state.groundTs = 0; state.jumps = 0; state.stopped = false;
+      state.inMini = false;
       var game = global.ZV && global.ZV.game;
       if (!game) throw new Error("ZV.game ещё нет");
       if (!state.hooked) {
@@ -160,7 +168,30 @@
       if (!item) return null;
       return { index: sc.index, total: sc.order.length, locked: sc.locked, over: sc.over,
         correct: typeof item.correct === "number" ? item.correct : -1, answers: item.answers.length, score: sc.score };
-    }
+    },
     // week4 probes
+    // Гибрид: где сейчас игрок — в сюжете или в мини-игре, видна ли кнопка
+    // запуска. Сюжетная сцена во время мини-игры СПИТ, поэтому novel() её не
+    // отдаёт: здесь смотрим на неё независимо от активности.
+    hybrid: function () {
+      var game = global.ZV.game;
+      var story = game.scene.getScene("zv-play");
+      var mini = game.scene.getScene("zv-mini");
+      if (!story || !story.rt) return null;
+      var st = story.stage || {};
+      return {
+        node: story.rt.id(),
+        vars: story.rt.vars,
+        plays: story.plays || [],
+        storyAwake: story.sys.isActive(),
+        storySleeping: story.sys.isSleeping(),
+        mini: mini ? mini.sys.settings.key : null,
+        start: st.startBtn ? { x: st.startBtn.box.x, y: st.startBtn.box.y, label: st.startBtn.text.text } : null,
+        rules: st.rulesText ? st.rulesText.text : null,
+        typing: !!st.typing,
+        ended: !!story.rt.ended(),
+        choices: st.typing ? 0 : story.rt.choices().length
+      };
+    }
   };
 })(window);

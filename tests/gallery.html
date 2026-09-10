@@ -62,8 +62,9 @@
     { id: "wheel", name: "Розыгрыш", hint: "Колесо: одно касание — приз по весам. Без «Ещё раз»." },
     { id: "platformer", name: "Платформер", hint: "Кнопки внизу: влево, вправо, прыжок. Три уровня, монеты, шипы, дверь." },
     { id: "novel", name: "Новелла", hint: "Тап по панели — дальше; варианты — выбор. Три концовки." },
-    { id: "quest", name: "Квест", hint: "Новелла с предметами: полка сверху, без пропуска в лифт не пустят." }
+    { id: "quest", name: "Квест", hint: "Новелла с предметами: полка сверху, без пропуска в лифт не пустят." },
     // week4
+    { id: "hybrid", name: "Гибрид", hint: "Сюжет останавливается на мини-игре, её счёт открывает ветку.", archetype: "novel", content: { novel: "tests/fixtures/hybrid.json" } }
   ];
   var PRIZE = { title: "Скидка 10%", code: "DEMO10", text: "Демо-приз галереи", button: "", url: "" };
 
@@ -82,7 +83,7 @@
   function config(kit, seed) {
     return {
       title: kit.name,
-      archetype: kit.id,
+      archetype: kit.archetype || kit.id,
       params: kit.params || {},
       prize: PRIZE,
       theme: { name: "Галерея", primary: "#4f7cff", secondary: "#ffd23f", logoUrl: "" },
@@ -96,7 +97,11 @@
   // пути (vendor/, game/, content/) шли к корню шаблона.
   function build(html, kit, seed) {
     var cfg = config(kit, seed);
-    var inline = "<script>window.ZV_TEST={seed:" + JSON.stringify(seed) + "};window.ZV_GAME=" + JSON.stringify(cfg) + ";<\/script>";
+    // Карточка-данные (гибрид) поднимает чужой архетип со своим контентом:
+    // адрес уходит в ZV_TEST.contentUrl, который читает ZV.loadContent.
+    var test = { seed: seed };
+    if (kit.content) test.contentUrl = kit.content;
+    var inline = "<script>window.ZV_TEST=" + JSON.stringify(test) + ";window.ZV_GAME=" + JSON.stringify(cfg) + ";<\/script>";
     var out = html.replace(/<script src="game\/config\.js"><\/script>/, inline);
     if (out === html) throw new Error("в index.html не найден game/config.js");
     return out.replace(/<head>/, '<head><base href="' + root + '">');

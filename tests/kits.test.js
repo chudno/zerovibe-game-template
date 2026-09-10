@@ -115,6 +115,37 @@ test("index.html: модули недели 4 подключены до game/con
   assert.ok(html.includes("<!-- kits: week4 -->"), "маркер kits: week4 потерян");
 });
 
+// Крючок автопрогона ZV_TEST.playResult подменяет исход мини-игры, не поднимая
+// её сцену. В обычной игре ZV_TEST не определён, поэтому читать поле можно
+// ТОЛЬКО через него: любое другое упоминание — дыра, которой можно выиграть
+// мини-игру из консоли.
+test("shell.js: playResult читается только из ZV_TEST", () => {
+  const src = fs.readFileSync(path.join(root, "game", "shell.js"), "utf8");
+  const hits = [...src.matchAll(/[A-Za-z_$][\w$]*\s*\.\s*playResult|playResult/g)];
+  assert.ok(hits.length > 0, "в shell.js нет playResult — крючок автопрогона потерян");
+  for (const line of src.split("\n")) {
+    if (!/playResult/.test(line) || /^\s*\/\//.test(line.trim())) continue;
+    assert.ok(/TEST\.playResult/.test(line), `playResult мимо ZV_TEST: ${line.trim()}`);
+  }
+});
+
+// Мост «сюжет ↔ мини-игра» пускает из узла play только киты из белого списка
+// PLAYABLE (game/novel.js). Новый кит, забытый в списке, молча не запускается
+// из сюжета: валидатор скажет «нельзя запускать из сюжета» на живом контенте.
+test("novel.js: PLAYABLE перечисляет каждый кит, кроме сюжетных novel и quest", () => {
+  const src = fs.readFileSync(path.join(root, "game", "novel.js"), "utf8");
+  const m = src.match(/var PLAYABLE = \[([^\]]*)\]/);
+  assert.ok(m, "в game/novel.js нет константы PLAYABLE");
+  const listed = [...m[1].matchAll(/"([a-z0-9_-]+)"/g)].map((x) => x[1]).sort();
+  const want = kitNames.filter((n) => n !== "novel" && n !== "quest").sort();
+  for (const n of want) {
+    assert.ok(listed.includes(n), `кит ${n} не перечислен в PLAYABLE — из сюжета он не запустится`);
+  }
+  for (const n of ["novel", "quest"]) {
+    assert.ok(!listed.includes(n), `${n} в PLAYABLE — сюжет внутри сюжета не поднимается`);
+  }
+});
+
 test("index.html подключает каждый кит, а game/config.js знает все архетипы", () => {
   const html = fs.readFileSync(path.join(root, "index.html"), "utf8");
   const cfg = fs.readFileSync(path.join(root, "game", "config.js"), "utf8");

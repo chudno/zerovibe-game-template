@@ -375,8 +375,15 @@ test("quest: каждая концовка достижима, инвентар�
 });
 
 test("галерея: все киты поднимаются в своих кадрах, шлют ready, без ошибок консоли", async () => {
-  const kits = fs.readdirSync(path.join(__dirname, "..", "..", "game", "kits"))
-    .filter((d) => fs.existsSync(path.join(__dirname, "..", "..", "game", "kits", d, "kit.js"))).sort();
+  // Карточки-данные (гибрид) поднимают чужой архетип со своим контентом —
+  // ready ждём и от них. Список берём из tests/gallery.test.js текстом:
+  // require запустил бы его тесты внутри этого прогона.
+  const galleryTest = fs.readFileSync(path.join(__dirname, "..", "gallery.test.js"), "utf8");
+  const dataCards = [...galleryTest.matchAll(/const DATA_CARDS = \{([^}]*)\}/g)]
+    .flatMap((m) => [...m[1].matchAll(/(\w+)\s*:/g)].map((x) => x[1]));
+  const kits = [...new Set(fs.readdirSync(path.join(__dirname, "..", "..", "game", "kits"))
+    .filter((d) => fs.existsSync(path.join(__dirname, "..", "..", "game", "kits", d, "kit.js")))
+    .concat(dataCards))].sort();
   const context = await browser.newContext({ viewport: { width: 1400, height: 900 }, deviceScaleFactor: 1 });
   const errors = [];
   const page = await context.newPage();
@@ -491,5 +498,243 @@ test("тема: логотип на «Играть» и «Результат» �
     // Браузер честно пишет 404 по картинке в консоль — это и есть «битая
     // ссылка»; ошибок самой игры быть не должно.
     assert.deepEqual(g.errors.filter((e) => !/Failed to load resource/.test(e)), [], "ошибки страницы");
+  } finally { await g.close(); }
+});
+
+// --- гибрид: сюжет с узлом мини-игры (week4) ---------------------------------
+// Фикстура tests/fixtures/hybrid.json подсовывается вместо content/novel.json.
+const HYBRID = "/tests/fixtures/hybrid.json";
+const hybridData = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "fixtures", "hybrid.json"), "utf8"));
+
+// Финал СЮЖЕТА, а не мини-игры: waitFinish поймал бы первый же finish, а его
+// шлёт и партия внутри узла play (meta.mini === true).
+async function waitStoryFinish(g, since, timeout) {
+  const deadline = Date.now() + (timeout || 15000);
+  while (Date.now() < deadline) {
+    const evs = (await g.events()).slice(since);
+    const fin = evs.find((e) => e.type === "finish" && e.meta && e.meta.mini === false);
+    if (fin) return fin;
+    await g.page.waitForTimeout(100);
+  }
+  throw new Error("сюжет не дошёл до концовки за отведённое время");
+}
+
+// Довести сюжет до концовки, всюду беря первый доступный вариант: нужен там,
+// где план шагов уже не важен — важна только сама концовка.
+async function toEnding(g) {
+  for (let guard = 0; guard < 40; guard++) {
+    const st = await g.scene(() => window.__zvBot.hybrid());
+    if (!st || !st.storyAwake || st.typing) { await g.page.waitForTimeout(100); continue; }
+    if (st.ended) { await g.tap(180, 380); return; }
+    if (st.choices > 0) await g.tap(180, 468);
+    else await g.tap(180, 380);
+    await g.page.waitForTimeout(250);
+  }
+  throw new Error("сюжет не дошёл до концовки");
+}
+
+// Провести сюжет по шагам из paths(): число — индекс варианта, объект
+// { kind: "play" } — узел мини-игры (исход подставлен через ZV_TEST.playResult).
+async function playHybrid(g, steps) {
+  const plan = steps.slice();
+  for (let guard = 0; guard < 200; guard++) {
+    const st = await g.scene(() => window.__zvBot.hybrid());
+    if (!st || !st.storyAwake) { await g.page.waitForTimeout(100); continue; }
+    if (st.typing) { await g.tap(180, 380); await g.page.waitForTimeout(80); continue; }
+    if (st.ended) { await g.tap(180, 380); return; }
+    if (st.start) {
+      const s = plan.shift();
+      assert.ok(s && s.kind === "play", "сюжет привёл к мини-игре, а в плане её нет");
+      await g.tap(st.start.x, st.start.y);
+      await g.page.waitForTimeout(400);
+      continue;
+    }
+    if (st.choices > 0) {
+      const i = plan.shift();
+      assert.ok(typeof i === "number" && i < st.choices, "план кончился раньше сюжета: " + st.node);
+      await g.tap(180, 468 + i * 44);
+      await g.page.waitForTimeout(300);
+      continue;
+    }
+    await g.tap(180, 380);          // линейный узел — «дальше»
+    await g.page.waitForTimeout(120);
+  }
+  throw new Error("гибрид не дошёл до концовки");
+}
+
+test("гибрид: ветвление — каждая концовка достижима, счёт мини-игры лежит в переменной", async () => {
+  const paths = NOVEL.paths(hybridData);
+  assert.ok(Object.keys(paths).length >= 3, "три концовки: " + Object.keys(paths).join(", "));
+  for (const outcome of Object.keys(paths)) {
+    const steps = paths[outcome];
+    const play = steps.find((s) => s && s.kind === "play");
+    assert.ok(play, `путь до ${outcome} обязан идти через мини-игру`);
+    const g = await openGame(browser, server, {
+      archetype: "novel", seed: 1, params: { typeMs: 0 },
+      contentUrl: { novel: HYBRID },
+      playResult: { won: play.won, score: play.score }
+    });
+    try {
+      const m = await g.mark();
+      await g.play();
+      await playHybrid(g, steps);
+      await waitStoryFinish(g, m);
+      const evs = (await g.events()).slice(m).filter((e) => e.type === "finish");
+      // Первый finish — мини-игры (meta.mini, meta.node), последний — сюжета.
+      const mini = evs.find((e) => e.meta && e.meta.mini === true);
+      assert.ok(mini, "finish мини-игры не пришёл: " + JSON.stringify(evs.map((e) => e.meta)));
+      assert.equal(mini.meta.node, "lift_puzzle");
+      assert.equal(mini.score, play.score);
+      assert.equal(mini.won, play.won);
+      const fin = evs[evs.length - 1];
+      assert.equal(fin.outcome, outcome);
+      assert.equal(fin.meta.mini, false, "финальный finish сюжета не мини-игра");
+      assert.equal(fin.meta.archetype, "novel");
+      // Счёт партии подставлен в переменную сюжета, итог записан в plays.
+      assert.equal(fin.meta.vars.run_score, play.score);
+      assert.deepEqual(fin.meta.plays, [{ node: "lift_puzzle", kit: "catch", score: play.score, won: play.won }]);
+      clean(g);
+    } finally { await g.close(); }
+  }
+});
+
+test("гибрид: вживую — настоящая ловилка внутри сюжета, возврат без экрана результата", async () => {
+  const g = await openGame(browser, server, {
+    archetype: "novel", seed: 1, params: { typeMs: 0 },
+    contentUrl: { novel: HYBRID }
+  });
+  try {
+    const m = await g.mark();
+    await g.play();
+    await g.page.waitForTimeout(200);
+    await g.tap(180, 468);                       // «Бегу к лифту»
+    await g.page.waitForTimeout(400);
+    const before = await g.scene(() => window.__zvBot.hybrid());
+    assert.equal(before.node, "lift_puzzle");
+    assert.ok(before.start && before.start.label === "Ловить", "кнопка запуска не показана: " + JSON.stringify(before));
+    assert.equal(before.rules, "Лови пакеты, пропускай мусор", "строка правил под кнопкой обязательна");
+    assert.equal(before.mini, null, "мини-игра не должна стартовать до нажатия кнопки");
+    // Тап по панели мимо кнопки партию не начинает — предупреждение работает.
+    await g.tap(180, 380);
+    await g.page.waitForTimeout(200);
+    assert.equal((await g.scene(() => window.__zvBot.hybrid())).mini, null, "мини-игра стартовала по тапу по панели");
+
+    await g.tap(before.start.x, before.start.y);
+    await g.page.waitForTimeout(500);
+    const during = await g.scene(() => window.__zvBot.hybrid());
+    assert.equal(during.mini, "zv-mini", "сцена кита обязана жить под ключом zv-mini");
+    assert.equal(during.storySleeping, true, "сюжетная сцена во время мини-игры спит, иначе ввод идёт в обе");
+    // Параметры узла дошли до кита отдельным слоем, поверх config.params.
+    assert.deepEqual(await g.scene(() => window.ZV_PLAY_PARAMS), { duration: 6000, passScore: 3 });
+    // Один уровень вложенности: мини-игра не поднимает мини-игру.
+    const nested = await g.scene(() => {
+      try { window.ZV.play(window.ZV.game.scene.getScene("zv-mini"), "catch", {}); return ""; }
+      catch (e) { return String(e.message); }
+    });
+    assert.match(nested, /мини-игра не может запускать мини-игру/);
+    await g.bot("catch", "expert");
+    const fin = await g.waitFinish(m, 30000);
+    assert.equal(fin.meta.mini, true);
+    assert.equal(fin.meta.node, "lift_puzzle");
+    assert.equal(fin.meta.archetype, "catch");
+    // 0,9 с итога и возврат: активна сцена сюжета, zv-mini снята, результата нет.
+    await g.page.waitForTimeout(1500);
+    const after = await g.scene(() => ({
+      h: window.__zvBot.hybrid(),
+      keys: window.ZV.game.scene.scenes.map((s) => s.sys.settings.key),
+      result: window.ZV.game.scene.getScene("zv-result").sys.isActive()
+    }));
+    assert.equal(after.h.storyAwake, true, "после мини-игры активна сцена сюжета");
+    assert.ok(!after.keys.includes("zv-mini"), "сцена мини-игры обязана сниматься: " + after.keys.join(", "));
+    assert.equal(after.result, false, "экран результата внутри сюжета не показывается");
+    assert.ok(["lift_fast", "stairs"].includes(after.h.node), "сюжет ушёл по ветке исхода: " + after.h.node);
+    assert.equal(after.h.plays.length, 1);
+    // Один тап после возврата — РОВНО один переход (подписки stage.js пережили сон).
+    const nodeBefore = after.h.node;
+    await g.tap(180, 380);
+    await g.page.waitForTimeout(400);
+    const step1 = await g.scene(() => window.__zvBot.hybrid());
+    assert.notEqual(step1.node, nodeBefore, "тап после возврата не сработал");
+    assert.equal(step1.node, "door", "один тап — один переход, а ушли дальше: " + step1.node);
+    // Дальше — концовка; итог сюжета за партию ровно один.
+    await toEnding(g);
+    await waitStoryFinish(g, m);
+    await g.page.waitForTimeout(400);
+    const results = (await g.events()).slice(m).filter((e) => e.type === "finish" && e.meta && e.meta.mini === false);
+    assert.equal(results.length, 1, "итог сюжета за партию ровно один: " + results.length);
+    clean(g);
+  } finally { await g.close(); }
+});
+
+test("гибрид: проигрыш мини-игры — не конец, а другая ветка и другая концовка", async () => {
+  const g = await openGame(browser, server, {
+    archetype: "novel", seed: 1, params: { typeMs: 0 },
+    contentUrl: { novel: HYBRID },
+    playResult: { won: false, score: 0 }
+  });
+  try {
+    const m = await g.mark();
+    await g.play();
+    await g.page.waitForTimeout(200);
+    await g.tap(180, 468);                       // «Бегу к лифту»
+    await g.page.waitForTimeout(400);
+    const st = await g.scene(() => window.__zvBot.hybrid());
+    await g.tap(st.start.x, st.start.y);
+    await g.page.waitForTimeout(500);
+    const after = await g.scene(() => window.__zvBot.hybrid());
+    assert.equal(after.node, "stairs", "проигрыш обязан вести в ветку-без-if: " + after.node);
+    assert.equal(after.ended, false, "проигрыш мини-игры не заканчивает партию");
+    assert.equal(after.vars.run_score, 0);
+    // Доводим до концовки: она отличается от победной.
+    await toEnding(g);
+    const fin = await waitStoryFinish(g, m);
+    assert.equal(fin.outcome, "late", "проигранная мини-игра ведёт к своей концовке");
+    assert.equal(fin.won, false);
+    assert.equal(fin.meta.mini, false);
+    assert.deepEqual(fin.meta.plays, [{ node: "lift_puzzle", kit: "catch", score: 0, won: false }]);
+    clean(g);
+  } finally { await g.close(); }
+});
+
+test("гибрид: многоэкранная мини-игра — progress уровней несёт узел сюжета", async () => {
+  // Платформер шлёт progress на каждый уровень: внутри сюжета эти события
+  // обязаны быть привязаны к узлу так же, как finish, иначе воронка рвётся.
+  const data = content("levels.json");
+  const plans = data.levels.map((lv) => L.validateLevel(lv.map).solved.plan);
+  const g = await openGame(browser, server, {
+    archetype: "novel", seed: 1, params: { typeMs: 0 },
+    contentUrl: { novel: "/tests/fixtures/hybrid-levels.json" }
+  });
+  try {
+    const m = await g.mark();
+    await g.play();
+    await g.page.waitForTimeout(200);
+    const st = await g.scene(() => window.__zvBot.hybrid());
+    assert.equal(st.node, "brief");
+    await g.tap(st.start.x, st.start.y);
+    await g.page.waitForTimeout(500);
+    await g.bot("platformer", "expert", { plans });
+    const fin = await g.waitFinish(m, 120000);
+    assert.equal(fin.meta.mini, true);
+    assert.equal(fin.meta.node, "brief");
+    const all = (await g.events()).slice(m).filter((e) => e.type === "progress");
+    const mini = all.filter((e) => e.meta && e.meta.mini === true);
+    assert.equal(mini.length, data.levels.length, JSON.stringify(all));
+    mini.forEach((e, i) => {
+      assert.equal(e.meta.node, "brief", "progress мини-игры без узла: " + JSON.stringify(e));
+      assert.equal(e.step, i + 1);
+      assert.equal(e.total, data.levels.length);
+      assert.ok(typeof e.meta.level === "number", "своё meta кита обязано доехать: " + JSON.stringify(e));
+    });
+    // Собственный progress сюжета остаётся прежним — mini у него не всплывает.
+    const story = all.filter((e) => !e.meta || e.meta.mini !== true);
+    assert.equal(story.length, 1, JSON.stringify(story));
+    assert.equal(story[0].meta.mini, undefined);
+    // Возврат в сюжет состоялся, экрана результата не было.
+    await g.page.waitForTimeout(1500);
+    const after = await g.scene(() => window.__zvBot.hybrid());
+    assert.equal(after.storyAwake, true);
+    assert.ok(["done", "fell"].includes(after.node), after.node);
+    clean(g);
   } finally { await g.close(); }
 });

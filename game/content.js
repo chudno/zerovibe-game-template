@@ -58,7 +58,9 @@
     novelChoice: { width: 270, lines: 2, k: 1 },          // вариант ответа (кнопка 40 px: 1 строка кеглем 2 или 2 кеглем 1)
     endTitle:    { width: 300, lines: 2, k: 2 },          // заголовок концовки
     endText:     { width: 290, lines: 4, k: 1 },          // описание концовки
-    itemTitle:   { width: 260, lines: 1, k: 1 }           // название предмета в инвентаре и тосте
+    itemTitle:   { width: 260, lines: 1, k: 1 },          // название предмета в инвентаре и тосте
+    // week4
+    novelRules:  { width: 300, lines: 1, k: 1 }           // строка-правило под кнопкой мини-игры
   };
   var MAX_LEN = 240;   // страховка от абзацев там, где ждём строку
 
@@ -239,6 +241,11 @@
       });
       if (Array.isArray(n.choices)) {
         n.choices.forEach(function (c, i) { if (c && typeof c === "object") textErr(errs, w + ".choices[" + i + "]", c.text, "text", "novelChoice"); });
+      }
+      // Узел мини-игры: подпись кнопки и строка-правило под ней (week4).
+      if (n.play && typeof n.play === "object") {
+        if (n.play.startLabel) fitErr(errs, w + ".play", n.play.startLabel, "startLabel", "novelChoice");
+        if (n.play.rules) fitErr(errs, w + ".play", n.play.rules, "rules", "novelRules");
       }
       if (n.end && typeof n.end === "object") {
         if (n.end.title !== undefined && typeof n.end.title !== "string") errs.push(w + ".end: title — строка");

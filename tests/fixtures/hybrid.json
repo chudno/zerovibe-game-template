@@ -1,0 +1,88 @@
+{
+  "start": "intro",
+  "vars": { "run_score": 0, "hurry": 0 },
+  "chapters": ["intro", "lift_puzzle", "door"],
+  "nodes": {
+    "intro": {
+      "bg": "office",
+      "portrait": "hero",
+      "speaker": "Курьер",
+      "text": "Заказ на девятый этаж, а лифт вот-вот уйдёт. Успеть бы к дверям.",
+      "choices": [
+        { "text": "Бегу к лифту", "goto": "lift_puzzle", "add": { "hurry": 1 } },
+        { "text": "Сначала звоню жильцу", "goto": "call" }
+      ]
+    },
+    "call": {
+      "bg": "office",
+      "portrait": "client",
+      "speaker": "Жилец",
+      "text": "«Придержу лифт, если поторопитесь». Трубка замолкает.",
+      "goto": "lift_puzzle"
+    },
+    "lift_puzzle": {
+      "bg": "lift",
+      "portrait": "hero",
+      "speaker": "Курьер",
+      "text": "Двери закрываются. Хватай пакеты, пока их не смело потоком людей.",
+      "play": {
+        "kit": "catch",
+        "params": { "duration": 6000, "passScore": 3 },
+        "score": "run_score",
+        "startLabel": "Ловить",
+        "rules": "Лови пакеты, пропускай мусор",
+        "outcomes": [
+          { "if": { "score": { "gte": 3 } }, "goto": "lift_fast", "add": { "hurry": 1 } },
+          { "if": { "won": true }, "goto": "lift_fast", "add": { "hurry": 1 } },
+          { "goto": "stairs" }
+        ]
+      }
+    },
+    "lift_fast": {
+      "bg": "lift",
+      "portrait": "hero",
+      "speaker": "Курьер",
+      "text": "Всё в руках, лифт поехал. Девятый этаж через минуту.",
+      "goto": "door"
+    },
+    "stairs": {
+      "bg": "stairs",
+      "portrait": "hero",
+      "speaker": "Курьер",
+      "text": "Пакеты рассыпались, лифт ушёл. Значит, лестница — девять этажей.",
+      "goto": "door"
+    },
+    "door": {
+      "bg": "door",
+      "portrait": "client",
+      "speaker": "Жилец",
+      "text": "Дверь открывается. Жилец смотрит на пакет, потом на часы.",
+      "choices": [
+        { "text": "Отдать заказ и уйти", "goto": "delivered", "if": { "run_score": 3 } },
+        { "text": "Спросить про следующий заказ", "goto": "regular", "if": { "run_score": 3 } },
+        { "text": "Извиниться за опоздание", "goto": "late" }
+      ]
+    },
+    "regular": {
+      "bg": "door",
+      "portrait": "client",
+      "speaker": "Жилец",
+      "text": "«Возите только вы. Записываю ваш телефон».",
+      "end": { "outcome": "regular", "title": "Свой курьер", "text": "Теперь заказы будут ваши.", "won": true }
+    },
+    "delivered": {
+      "bg": "door",
+      "portrait": "client",
+      "speaker": "Жилец",
+      "text": "«Быстро вы. Спасибо!» Пакет цел, время своё.",
+      "end": { "outcome": "delivered", "title": "Доставлено", "text": "Успел на лифте.", "won": true }
+    },
+    "late": {
+      "bg": "door",
+      "portrait": "hero",
+      "speaker": "Курьер",
+      "text": "Девять этажей пешком. Заказ на месте, но дыхание сбито.",
+      "end": { "outcome": "late", "title": "Пешком", "text": "Доставлено, но не вовремя.", "won": false }
+    }
+  }
+}
