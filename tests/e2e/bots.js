@@ -129,16 +129,20 @@
       if (state.mode !== "novice") {
         // Уход важнее очков: пустая шкала режет тап вдвое до конца партии.
         if (st.need < 40 && st.careReady) { sc.careBox.emit("pointerup"); return; }
-        // Покупка по плану: первая доступная позиция очереди, на которую хватает.
-        var want = (state.plan || [])[0];
-        if (want) {
+        // Покупка по плану. Голова очереди, ещё закрытая по needs, на экране
+        // не показана — её пропускаем и смотрим следующую позицию, ровно как
+        // simulate() в солвере. Иначе план вида «дорогое раньше того, что его
+        // открывает» встал бы навсегда, и бот перестал бы покупать вовсе.
+        var plan = state.plan || [];
+        for (var q = 0; q < plan.length; q++) {
+          var card = null;
           for (var i = 0; i < st.upgrades.length; i++) {
-            var u = st.upgrades[i];
-            if (u.id !== want) continue;
-            if (u.level >= u.max) { state.plan.shift(); break; }
-            if (st.score >= u.cost) { sc.cards[u.slot].box.emit("pointerup"); state.plan.shift(); return; }
-            break;
+            if (st.upgrades[i].id === plan[q]) { card = st.upgrades[i]; break; }
           }
+          if (!card) continue;                                   // закрыт или выкуплен — дальше по плану
+          if (card.level >= card.max) { plan.splice(q, 1); q -= 1; continue; }
+          if (st.score >= card.cost) { sc.cards[card.slot].box.emit("pointerup"); plan.splice(q, 1); return; }
+          break;                                                 // первая ВИДИМАЯ решает: копим на неё
         }
       }
       if (now - state.lastTapAt < gap) return;

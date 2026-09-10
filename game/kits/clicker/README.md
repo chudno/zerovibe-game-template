@@ -21,7 +21,7 @@
   ],
   "care": { "title": "Полить" },
   "upgrades": [
-    { "id": "soil", "title": "Хорошая почва", "cost": 45,  "perTap": 1, "max": 3 },
+    { "id": "soil", "title": "Хорошая почва", "cost": 45,  "perTap": 2, "max": 3 },
     { "id": "sun",  "title": "Тёплый свет",   "cost": 120, "perSec": 3, "max": 2 },
     { "id": "rain", "title": "Тёплый дождь",  "cost": 200, "perTap": 3, "max": 2, "needs": "sun" }
   ]

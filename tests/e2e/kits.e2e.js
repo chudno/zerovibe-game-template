@@ -518,6 +518,13 @@ test("clicker: эксперт берёт цель по плану солвера
     assert.ok(fin.meta.seconds <= best.seconds * 1.35,
       `движок ${fin.meta.seconds} с против модели ${best.seconds} с — экономика разошлась`);
     assert.ok(fin.meta.upgrades > 0 && fin.meta.careUses > 0, JSON.stringify(fin.meta));
+    // Движок обязан выкупить те же ступени, что и модель, а не добраться до
+    // цели своим путём. Хвост плана в счёт не идёт: цель приходит раньше, чем
+    // очередь кончается, и модель бросает её ровно так же — сверяем с ЕЁ
+    // покупками. Без этой строки бот мог молча не купить ничего.
+    const model = CLICKER.simulate(data, S, { taps: true, care: true, plan: best.plan.slice() });
+    assert.equal(fin.meta.upgrades, model.bought.length,
+      `движок купил ${fin.meta.upgrades} ступеней против ${model.bought.length} у модели: ${JSON.stringify({ rep, bought: model.bought, plan: best.plan })}`);
     // Стадии открывались по ходу, а не разом в конце.
     assert.ok(fin.meta.stage >= data.stages.length - 1, JSON.stringify(fin.meta));
     clean(g, rep);

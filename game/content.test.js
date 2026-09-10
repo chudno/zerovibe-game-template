@@ -149,3 +149,17 @@ test("clicker: достижимость цели считает солвер, о
   // Короткая партия ту же цель уже не берёт — ошибка про duration, а не молчание.
   assert.ok(C.validate("clicker", base(), { params: { duration: 20000 } })[0].includes("не набирается за duration 20 с"));
 });
+
+test("clicker: showUpgrades 0 — «цель достижима» не выдаётся, покупать нечем", () => {
+  const base = () => JSON.parse(JSON.stringify(load("clicker.json")));
+  // Солвер считает апгрейды доступными всегда, кит же при нуле не рисует ни
+  // одной карточки — без этой проверки автор получил бы «всё хорошо» на
+  // непроходимых с его же params данных.
+  const e = C.validate("clicker", base(), { params: { showUpgrades: 0 } });
+  assert.ok(e[0].includes("карточек апгрейдов на экране нет"), e.join(" | "));
+  // Дробное значение кит округляет — 0.4 это тот же ноль карточек.
+  assert.ok(C.validate("clicker", base(), { params: { showUpgrades: 0.4 } }).length, "0.4 округляется в 0");
+  // Одной карточки уже достаточно, и отсутствие params ничего не ломает.
+  assert.deepEqual(C.validate("clicker", base(), { params: { showUpgrades: 1 } }), []);
+  assert.deepEqual(C.validate("clicker", base(), { params: {} }), []);
+});
