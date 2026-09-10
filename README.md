@@ -55,6 +55,7 @@ game/pool.js          пул предметов с весами, категор�
                       сюжет с мини-играми (узел play новеллы и квеста):
                       формат и правила — .claude/skills/archetype-hybrid,
                       пример — tests/fixtures/hybrid.json
+game/memory.js        раздача «памяти»: ровно 2·pairs значений, каждое дважды
 game/main.js          выбор кита по archetype
 game/kits/*/          киты: runner, catch, quiz, persona, wheel, platformer,
                       novel, quest (+ README)
@@ -253,6 +254,8 @@ iframe.contentWindow.postMessage({ source: "zv-host", type: "restart" }, "*");
 - сюжет с мини-играми (`game/novel.test.js`, узел `play`): кит из белого
   списка, счёт в объявленную числовую переменную, последняя ветка без `if`,
   перекрытые ветки, потолок в три мини-игры, разбор исхода без `null`;
+- раздача «памяти» (`game/memory.test.js`): чётность раскладки на 200 сидах,
+  повторяемость по сиду, поле влезает в сетку тач-целей;
 - в статике нет имени платформы (игра живёт своей жизнью на чужом сайте), в
   корне нет `package.json`.
 

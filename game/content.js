@@ -59,7 +59,8 @@
     endTitle:    { width: 300, lines: 2, k: 2 },          // заголовок концовки
     endText:     { width: 290, lines: 4, k: 1 },          // описание концовки
     itemTitle:   { width: 260, lines: 1, k: 1 },          // название предмета в инвентаре и тосте
-    // week4
+    // week4 areas: новая область — своя строка, в алфавитном порядке
+    memoryCard:  { width: 54,  lines: 2, k: 1 },          // подпись на карточке «памяти»: самая узкая ячейка (60 px минус поля)
     novelRules:  { width: 300, lines: 1, k: 1 }           // строка-правило под кнопкой мини-игры
   };
   var MAX_LEN = 240;   // страховка от абзацев там, где ждём строку
@@ -269,6 +270,121 @@
     return validateNovel(data);
   }
 
+  // Память-пары: раунды (сколько пар) и словарь видов карточек. Сколько
+  // карточек на поле — считает game/memory.js как 2·pairs, автор это число не
+  // задаёт. Здесь проверяется, что пар хватает видов, что поле физически
+  // влезает в сетку тач-целей и что ходов хватает на проходимую партию.
+  var GRID = (typeof module !== "undefined" && module.exports) ? require("./grid.js") : root.ZV_GRID;
+  var MEMORY = (typeof module !== "undefined" && module.exports) ? require("./memory.js") : root.ZV_MEMORY;
+  // Игровое поле кита: те же числа, что в game/kits/memory/kit.js (BOARD).
+  var MEMORY_BOARD = { area: { x: 12, y: 150, w: 336, h: 400 }, gap: 8, maxCols: 5, min: { w: 24, h: 24 } };
+  // «4 пары», а не «4 пар»: текст ошибки читает человек, а не парсер.
+  function plural(n, one, few, many) {
+    var a = Math.abs(n) % 100, b = a % 10;
+    if (a > 10 && a < 20) return many;
+    if (b > 1 && b < 5) return few;
+    return b === 1 ? one : many;
+  }
+  // Подпись переносится по фактической ширине ячейки (кит: cell.w - 6), а
+  // ячейка тем уже, чем больше пар. Мерить по константе нельзя: контент прошёл
+  // бы проверку и обрезался на поле у автора с 11–12 парами.
+  function memoryCardWrap(pairs) {
+    var lay = GRID.best(pairs * 2, MEMORY_BOARD.area, { min: MEMORY_BOARD.min, gap: MEMORY_BOARD.gap, aspect: 1, maxCols: MEMORY_BOARD.maxCols });
+    return lay.fits ? lay.cell.w - 6 : 0;
+  }
+  function memoryTitleErr(errs, where, v, wrap, pairs) {
+    if (!isStr(v, 1, MAX_LEN)) { errs.push(where + ": title — непустая строка до " + MAX_LEN + " символов"); return; }
+    var miss = FONT.missing(v);
+    if (miss.length) { errs.push(where + ": title — нет таких символов в шрифте: " + miss.join(" ")); return; }
+    var a = AREAS.memoryCard;
+    if (FONT.fit(v, wrap, a.lines, a.k) >= a.k) return;
+    errs.push(where + ": title не влезает — не больше " + a.lines + " строк по ~" + Math.floor(wrap / (8 * a.k)) +
+      " знаков при " + pairs + " " + plural(pairs, "паре", "парах", "парах") + " (ячейка тем уже, чем больше пар)");
+  }
+  function validateMemory(data, opts) {
+    var errs = [];
+    var rounds = data && data.rounds, cards = data && data.cards;
+    if (!Array.isArray(rounds) || rounds.length < 1 || rounds.length > 10) errs.push("rounds: массив от 1 до 10 раскладов");
+    if (!Array.isArray(cards) || cards.length < 2 || cards.length > 24) errs.push("cards: массив от 2 до 24 видов карточек");
+    if (errs.length) return errs;
+
+    // Самый тесный раунд задаёт ширину подписи для всех карточек: одна и та же
+    // карточка выпадает в любом раскладе.
+    var tight = 0;
+    rounds.forEach(function (r) {
+      if (r && Number.isInteger(r.pairs) && r.pairs > tight && r.pairs <= MEMORY.LIMITS.maxPairs) tight = r.pairs;
+    });
+    if (tight < MEMORY.LIMITS.minPairs) tight = MEMORY.LIMITS.minPairs;
+    var wrap = memoryCardWrap(tight) || AREAS.memoryCard.width;
+
+    var ids = {}, withIcon = 0;
+    cards.forEach(function (c, i) {
+      var w = "cards[" + i + "]";
+      if (!c || typeof c !== "object") { errs.push(w + ": объект {id, title}"); return; }
+      if (!/^[a-z0-9_-]{1,32}$/.test(String(c.id))) errs.push(w + ": id — латиница/цифры/-/_ до 32");
+      else if (ids[c.id]) errs.push(w + ": id «" + c.id + "» повторяется");
+      ids[c.id] = true;
+      memoryTitleErr(errs, w, c.title, wrap, tight);
+      if (c.icon !== undefined && !/^[a-z0-9_:-]{1,32}$/.test(String(c.icon))) errs.push(w + ".icon: ключ картинки — латиница/цифры/-/_/: до 32");
+      else if (c.icon) withIcon++;
+      if (c.color !== undefined && !/^#[0-9a-fA-F]{6}$/.test(String(c.color))) errs.push(w + ": color — #rrggbb");
+    });
+    // Две карточки с одинаковой подписью на заглушках неотличимы: игрок видит
+    // «пару», которой нет, и обвиняет игру, а не данные.
+    var titles = {};
+    cards.forEach(function (c, i) {
+      if (!c || typeof c.title !== "string" || !c.title) return;
+      if (titles[c.title]) errs.push("cards[" + i + "]: подпись «" + c.title + "» уже у cards[" + titles[c.title].i + "] — одинаковые карточки не различить");
+      else titles[c.title] = { i: i };
+    });
+
+    // Лимит из config.params действует на все раунды, где своего moves нет, —
+    // и должен проверяться тем же порогом: иначе params.moves: 6 молча делает
+    // партию непроходимой, а автор не получает ни слова.
+    var paramMoves = (opts && Number.isInteger(opts.moves) && opts.moves > 0) ? opts.moves : 0;
+    rounds.forEach(function (r, i) {
+      var w = "rounds[" + i + "]";
+      if (!r || typeof r !== "object") { errs.push(w + ": объект {name, pairs}"); return; }
+      textErr(errs, w, r.name, "name", "levelName");
+      if (r.hint !== undefined && typeof r.hint !== "string") errs.push(w + ": hint — строка");
+      else if (r.hint) fitErr(errs, w, r.hint, "hint", "levelHint");
+      var pairs = r.pairs;
+      if (!(Number.isInteger(pairs) && pairs >= MEMORY.LIMITS.minPairs && pairs <= MEMORY.LIMITS.maxPairs)) {
+        errs.push(w + ".pairs: целое от " + MEMORY.LIMITS.minPairs + " до " + MEMORY.LIMITS.maxPairs + " (сейчас " + pairs + ")");
+        return;
+      }
+      if (pairs > cards.length) {
+        errs.push(w + ".pairs: " + pairs + " " + plural(pairs, "пара", "пары", "пар") + ", а в cards только " + cards.length +
+          " " + plural(cards.length, "вид", "вида", "видов") + " — добавь ещё " + (pairs - cards.length) + " или уменьши pairs");
+      }
+      // Сетка: 2·pairs карточек в поле кита при тач-цели 24 px.
+      var lay = GRID.best(pairs * 2, MEMORY_BOARD.area, { min: MEMORY_BOARD.min, gap: MEMORY_BOARD.gap, aspect: 1, maxCols: MEMORY_BOARD.maxCols });
+      if (!lay.fits) {
+        errs.push(w + ".pairs: " + pairs + " пар = " + (pairs * 2) + " карточек не влезают в поле — " + lay.reason);
+      }
+      // Ход тратится на ПАРУ: идеальная игра требует 2·pairs ходов, запас +2.
+      var need = MEMORY.minMoves(pairs) + 2;
+      if (r.moves !== undefined) {
+        if (!(Number.isInteger(r.moves) && r.moves > 0)) errs.push(w + ".moves: целое больше нуля (сейчас " + r.moves + ")");
+        else if (r.moves < need) {
+          errs.push(w + ".moves: " + r.moves + " ходов на " + pairs + " " + plural(pairs, "пару", "пары", "пар") +
+            " — партия непроходима, нужно минимум " + need);
+        }
+      } else if (paramMoves > 0 && paramMoves < need) {
+        errs.push(w + ".pairs: " + paramMoves + " ходов из params.moves на " + pairs + " " + plural(pairs, "пару", "пары", "пар") +
+          " — партия непроходима, нужно минимум " + need);
+      }
+    });
+    // Больше восьми видов на заглушках различаются только цветом — это про
+    // играбельность, и лучше сказать до публикации.
+    var maxPairs = 0;
+    rounds.forEach(function (r) { if (r && Number.isInteger(r.pairs) && r.pairs > maxPairs) maxPairs = r.pairs; });
+    if (maxPairs > 8 && withIcon < maxPairs) {
+      errs.push("cards: при " + maxPairs + " парах без icon карточки различаются только цветом — добавь иконки или уменьши pairs");
+    }
+    return errs;
+  }
+
   // По ключу на строку: новый кит дописывает СВОЮ строку под маркером и не
   // трогает чужие — иначе параллельные ветки дерутся за одну длинную строку.
   var validators = {
@@ -277,8 +393,9 @@
     wheel: validateWheel,
     levels: validateLevels,
     novel: validateNovel,
-    quest: validateQuest
+    quest: validateQuest,
     // week4
+    memory: validateMemory
   };
 
   function validate(kind, data, opts) {

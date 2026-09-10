@@ -94,3 +94,69 @@ test("mergeParams: перекрытие, неизвестный ключ и чу
   assert.notEqual(C.mergeParams(d).params, d, "возвращается копия, дефолты кита не мутируют");
   assert.ok(C.mergeParams({ n: 1 }, { n: NaN }).warnings.length === 1);
 });
+
+// week4: memory
+test("memory: пары, виды, сетка, ходы, подписи и повторы — каждая строка таблицы", () => {
+  const base = () => ({
+    rounds: [{ name: "Разминка", hint: "Найди пары", pairs: 4 }],
+    cards: [
+      { id: "box", title: "Коробка", color: "#4f7cff" },
+      { id: "stamp", title: "Печать" },
+      { id: "letter", title: "Письмо" },
+      { id: "keys", title: "Ключи" }
+    ]
+  });
+  assert.deepEqual(C.validate("memory", base()), []);
+  // Валидатор обязан работать и без opts (дефолты кита).
+  assert.deepEqual(C.validate("memory", base(), undefined), []);
+  assert.ok(C.validate("memory", { rounds: [], cards: base().cards })[0].includes("от 1 до 10"));
+  assert.ok(C.validate("memory", { rounds: base().rounds, cards: [{ id: "a", title: "А" }] })[0].includes("от 2 до 24"));
+
+  let d = base(); d.rounds[0].pairs = 0;
+  assert.ok(C.validate("memory", d).some((e) => e.includes("pairs: целое от 2 до 12 (сейчас 0)")), JSON.stringify(C.validate("memory", d)));
+  d = base(); d.rounds[0].pairs = 8;
+  assert.ok(C.validate("memory", d).some((e) => e.includes("8 пар, а в cards только 4 вида")), JSON.stringify(C.validate("memory", d)));
+  // Ход тратится на пару: 8 ходов на 4 пары — непроходимо, нужно 2·4 + 2.
+  d = base(); d.rounds[0].moves = 8;
+  assert.ok(C.validate("memory", d).some((e) => e.includes("8 ходов на 4 пары — партия непроходима, нужно минимум 10")), JSON.stringify(C.validate("memory", d)));
+  d = base(); d.rounds[0].moves = 10;
+  assert.deepEqual(C.validate("memory", d), []);
+  d = base(); d.rounds[0].moves = 0;
+  assert.ok(C.validate("memory", d).some((e) => e.includes("moves: целое больше нуля")));
+  // Лимит из config.params проверяется тем же порогом, иначе непроходимая
+  // партия проходит проверку молча (у раунда своего moves нет).
+  assert.ok(C.validate("memory", base(), { moves: 6 }).some((e) => e.includes("6 ходов из params.moves на 4 пары — партия непроходима, нужно минимум 10")),
+    JSON.stringify(C.validate("memory", base(), { moves: 6 })));
+  assert.deepEqual(C.validate("memory", base(), { moves: 10 }), []);
+  d = base(); d.rounds[0].moves = 10;
+  assert.deepEqual(C.validate("memory", d, { moves: 6 }), [], "свой moves раунда перебивает params");
+
+  d = base(); d.cards[1].id = "box";
+  assert.ok(C.validate("memory", d).some((e) => e.includes("id «box» повторяется")));
+  d = base(); d.cards[1].id = "Box 1";
+  assert.ok(C.validate("memory", d).some((e) => e.includes("id — латиница")));
+  d = base(); d.cards[0].color = "red";
+  assert.ok(C.validate("memory", d).some((e) => e.includes("color — #rrggbb")));
+  d = base(); d.cards[0].icon = "нет";
+  assert.ok(C.validate("memory", d).some((e) => e.includes("ключ картинки")));
+  // Одинаковые подписи неотличимы на заглушках.
+  d = base(); d.cards[1].title = "Коробка";
+  assert.ok(C.validate("memory", d).some((e) => e.includes("не различить")));
+  // Подпись на карточке — 2 строки по ширине ЯЧЕЙКИ, а ячейка тем уже, чем
+  // больше пар: «Коробка0» влезает при 8 парах и не влезает при 12.
+  d = base(); d.cards[0].title = "Двенадцатьбукв";
+  assert.ok(C.validate("memory", d).some((e) => e.includes("не влезает")));
+  d = { rounds: [{ name: "Финал", pairs: 12 }], cards: [] };
+  for (let i = 0; i < 12; i++) d.cards.push({ id: "c" + i, title: "Коробка" + i, icon: "i" + i });
+  assert.ok(C.validate("memory", d).some((e) => e.includes("не влезает — не больше 2 строк по ~6 знаков при 12 парах")),
+    JSON.stringify(C.validate("memory", d)));
+  d.rounds = [{ name: "Финал", pairs: 8 }];
+  assert.deepEqual(C.validate("memory", d), [], "при 8 парах ячейка шире — те же подписи влезают");
+  d = base(); d.rounds[0].name = "Слово ".repeat(30).trim();
+  assert.ok(C.validate("memory", d).some((e) => e.includes("name не влезает")));
+
+  // Больше 8 пар без иконок — предупреждение про различимость.
+  d = { rounds: [{ name: "Финал", pairs: 10 }], cards: [] };
+  for (let i = 0; i < 10; i++) d.cards.push({ id: "c" + i, title: "Вид " + i });
+  assert.ok(C.validate("memory", d).some((e) => e.includes("различаются только цветом")), JSON.stringify(C.validate("memory", d)));
+});
