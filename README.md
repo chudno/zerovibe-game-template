@@ -61,10 +61,13 @@ game/clicker.js       экономика кликера числами: парт
                       солвер «достижима ли цель», план покупок для бота
 game/sort.js          темп «собери заказ» числами: окно реакции и пауза между
                       предметами на всём диапазоне скоростей ленты
+game/timing.js        «точный тап» числами: маркер как функция времени
+                      (треугольная волна), зона раунда и окно честности
 game/kits/sort/       кит «Собери заказ» (+ README, content/sort.json)
+game/kits/timing/     кит «Точный тап» (+ README; контент-файла нет)
 game/main.js          выбор кита по archetype
 game/kits/*/          киты: runner, catch, quiz, persona, wheel, platformer,
-                      novel, quest, clicker (+ README)
+                      novel, quest, clicker, timing (+ README)
 assets/               только заглушки; настоящие картинки — по ссылке
 vendor/               Phaser 3.90.0 (MIT, LICENSE-phaser в корне)
 tests/                проверки, фикстуры и headless-прогон (в публикацию
@@ -78,7 +81,8 @@ docs/brief.md         бриф и концепт игры (в публикаци
 ## С чего начать
 
 1. `game/config.js` — название, `archetype` (`runner` | `catch` | `quiz` |
-   `persona` | `wheel` | `platformer` | `novel` | `quest` | `clicker`), цвета игры
+   `persona` | `wheel` | `platformer` | `novel` | `quest` | `clicker` |
+   `timing`), цвета игры
    (`theme`), `params`, секция `assets`.
 2. `game/kits/<archetype>/README.md` — параметры кита (ключи `params` с
    дефолтами) и формат его файла в `content/`.
@@ -269,6 +273,10 @@ iframe.contentWindow.postMessage({ source: "zv-host", type: "restart" }, "*");
 - темп «собери заказ» (`game/sort.test.js`): на любой скорости ленты предмет
   видно не меньше 350 мс и пауза между предметами длиннее его проезда — то же
   число валидатор проверяет по `config.params` и объясняет словами;
+- честность «точного тапа» (`game/timing.test.js`): маркер — функция времени и
+  повторяется по периоду, зона сужается до дна и не ниже, а на самом тяжёлом
+  раунде партии маркер проходит зону не быстрее 250 мс — иначе кит показывает
+  экран ошибки с готовыми числами вместо игры, в которую нельзя попасть;
 - в статике нет имени платформы (игра живёт своей жизнью на чужом сайте), в
   корне нет `package.json`.
 

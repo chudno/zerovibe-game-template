@@ -204,6 +204,40 @@
       state.lastTapAt = now;
       state.taps++;
       sc.hero.emit("pointerdown");
+    },
+    // week5:timing — «Точный тап». Эксперт целится в ЦЕНТР зоны, а не просто в
+    // зону: тапает в тот кадр, после которого маркер начнёт от центра
+    // удаляться. Решение принимается по положению НА КАДР ВПЕРЁД
+    // (pos(t + 1/60)) — сравнивать надо то, что будет, с тем, что есть, иначе
+    // бот стреляет по входу в полосу и мажет на четверть зоны в сторону
+    // подхода каждый раз. Новичок тапает случайно примерно раз в 500 мс и
+    // обязан проиграть по жизням.
+    timing: function (sc) {
+      var st = global.__zvBot.timing();
+      if (!st || st.over) return;
+      if (!finite(st.pos) || st.pos < 0 || st.pos > st.barWidth) violation("маркер вне шкалы: " + st.pos);
+      if (st.zone.x < 0 || st.zone.x + st.zone.w > st.barWidth) violation("зона вне шкалы: " + JSON.stringify(st.zone));
+      if (st.zone.w < st.zoneMin) violation("зона уже дна zoneMin: " + st.zone.w);
+      if (typeof sc.score === "number" && (!finite(sc.score) || sc.score < 0)) violation("счёт отрицательный или не число");
+      if (sc.tl && sc.tl.pending() >= 50) violation("таймлайн течёт: " + sc.tl.pending() + " шагов");
+      if (st.locked) return;                       // пауза между раундами — тап не считается
+      if (state.mode === "novice") {
+        // Случайные тапы примерно раз в 500 мс (кадр 1/60 → шанс 1/30).
+        if (global.ZV.random.chance(1 / 30)) sc.input.emit("pointerup", { x: 180, y: 320 });
+        return;
+      }
+      // Ближе всего к центру маркер будет в тот кадр, после которого расстояние
+      // до центра начнёт расти. Сравниваем «сейчас» с «через кадр»: пик
+      // пройден — тапаем. Страховка на случай, если пик проскочили внутри
+      // одного кадра: тапаем и просто попав в центральную полосу ±w/4.
+      var FRAME = 1000 / 60;
+      var now = global.ZV_TIMING.markerPos(st.t, st.speed, st.barWidth);
+      var ahead = global.ZV_TIMING.markerPos(st.t + FRAME, st.speed, st.barWidth);
+      var dNow = Math.abs(now - st.center), dAhead = Math.abs(ahead - st.center);
+      if (dAhead >= dNow && dNow <= st.zone.w / 4) {
+        sc.input.emit("pointerup", { x: 180, y: 320 });
+        state.taps++;
+      }
     }
   };
 
@@ -364,6 +398,23 @@
         score: Math.floor(sc.score), perTap: sc.perTapNow, perSec: sc.perSecNow,
         stage: sc.stage, goal: sc.goal.score, need: Math.round(sc.need),
         careReady: sc.elapsed >= sc.careReady, upgrades: ups, over: sc.over
+      };
+    },
+    // week5:timing — состояние шкалы: где маркер, где зона и её центр, сколько
+    // модельного времени идёт текущий раунд. t отдаётся отдельно, чтобы бот и
+    // тест считали положение на кадр вперёд той же функцией, что и кит.
+    timing: function () {
+      var game = global.ZV.game;
+      var sc = game.scene.getScene("zv-mini") || game.scene.getScene("zv-play");
+      if (!sc || !sc.sys.isActive() || !sc.zone) return null;
+      var t = sc.clock - sc.roundStart;
+      return {
+        t: t, pos: global.ZV_TIMING.markerPos(t, sc.speed, sc.barWidth || 300),
+        zone: { x: sc.zone.x, w: sc.zone.w },
+        center: sc.zone.x + sc.zone.w / 2,
+        speed: sc.speed, barWidth: sc.barWidth || 300, zoneMin: sc.zoneMin || 0,
+        round: sc.round + 1, rounds: sc.roundsTotal,
+        score: sc.score, lives: sc.lives, locked: !!sc.locked, over: !!sc.over
       };
     }
   };

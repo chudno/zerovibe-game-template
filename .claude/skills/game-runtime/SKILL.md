@@ -24,6 +24,7 @@ game/timeline.js             ZV.timeline: лента шагов на модел�
 game/save.js                 ZV.save: рекорд/стадии как удобство; игра проходима при пустом хранилище
 game/pool.js                 ZV.pool: пул предметов с весами, категориями и антиповтором
 game/memory.js | clicker.js | sort.js   чистые ядра китов недели 4: раздача пар, солвер экономики, окно реакции ленты
+game/timing.js               ядро «точного тапа»: маркер как функция времени, зона раунда, окно честности
 game/stage.js                сцена сюжетных китов: фон, портрет, панель с печатью, варианты, тост
 game/layout.js               геометрия: фон, сетка кадров, хитбокс
 game/main.js                 берёт кит по config.archetype
@@ -131,7 +132,7 @@ global.ZV.finish(scene, { score: 12, won: true, meta: {}, text: "препятс�
 
 ## config.js
 
-`title`, `archetype` (runner|catch|quiz|persona|wheel|platformer|novel|quest|memory|clicker|sort),
+`title`, `archetype` (runner|catch|quiz|persona|wheel|platformer|novel|quest|memory|clicker|sort|timing),
 `params` (сложность кита, ключи — README кита), `theme`
 (name/primary/secondary/logoUrl — подпись над названием и два акцента),
 `prize` (приз, только у брендированной игры) и `assets` (`hero` с

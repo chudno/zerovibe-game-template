@@ -1101,3 +1101,155 @@ test("sort: тап настоящей мышью в самый край корз
     assert.deepEqual(g.errors, [], "ошибки страницы");
   } finally { await g.close(); }
 });
+
+// week5: timing --------------------------------------------------------------
+// «Точный тап»: эксперт решает по положению маркера на кадр вперёд и обязан
+// выиграть; новичок со случайными тапами обязан проиграть по жизням; тап
+// НАСТОЯЩЕЙ мышью по канве засчитывается (тач-цель — вся канва); нечестные
+// params дают экран ошибки и событие error вместо игры, в которую не попасть.
+test("timing: эксперт попадает в зону каждый раунд и выигрывает, «Ещё раз» работает", async () => {
+  const g = await openGame(browser, server, { archetype: "timing", seed: 11, params: { rounds: 8, passScore: 60 } });
+  try {
+    const m = await g.mark();
+    await g.play();
+    await g.bot("timing", "expert");
+    const fin = await g.waitFinish(m, 60000);
+    const rep = await g.botReport();
+    assert.ok(fin.won, JSON.stringify({ fin, rep }));
+    assert.equal(fin.meta.archetype, "timing");
+    assert.equal(fin.meta.rounds, 8, "сыграны не все раунды: " + JSON.stringify(fin.meta));
+    assert.equal(fin.meta.misses, 0, "эксперт целится на кадр вперёд — промахов быть не должно");
+    // Бот целится в пик близости к центру — «идеально» обязано быть на каждом
+    // раунде, иначе прицел разъехался с тем, что засчитывает кит.
+    assert.equal(fin.meta.perfects, 8, "бот целится в центр, а «идеально» не на каждом раунде: " + fin.meta.perfects);
+    // Окно честности худшего раунда уходит наружу — по нему видно предел партии.
+    assert.ok(fin.meta.windowMs >= 250, "партия игралась за порогом честности: " + fin.meta.windowMs);
+    clean(g, rep);
+    // Экран результата: «Ещё раз» на y=430 без приза — новая партия стартует.
+    await g.page.waitForTimeout(300);
+    const m2 = await g.mark();
+    await g.expect("start", () => g.tap(180, 430));
+    await g.bot("timing", "expert");
+    const fin2 = await g.waitFinish(m2, 60000);
+    assert.ok(fin2.won, "после «Ещё раз» партия не переигрывается: " + JSON.stringify(fin2));
+    clean(g, await g.botReport());
+  } finally { await g.close(); }
+});
+
+test("timing: новичок со случайными тапами проигрывает по жизням", async () => {
+  const g = await openGame(browser, server, { archetype: "timing", seed: 11, params: { rounds: 10 } });
+  try {
+    const m = await g.mark();
+    await g.play();
+    await g.bot("timing", "novice");
+    const fin = await g.waitFinish(m, 60000);
+    const rep = await g.botReport();
+    assert.equal(fin.won, false, "игра, которая проходится случайными тапами, не игра");
+    // Проиграл именно по жизням, а не досидел до конца раундов.
+    assert.ok(fin.meta.misses >= 3, JSON.stringify(fin.meta));
+    assert.ok(fin.meta.rounds < 10, "все раунды сыграны — жизни не кончились: " + JSON.stringify(fin.meta));
+    clean(g, rep);
+  } finally { await g.close(); }
+});
+
+test("timing: тап настоящей мышью по канве засчитан, вне зоны — промах", async () => {
+  // Медленный маркер и широкая зона: снаружи мышью успеваем попасть в момент.
+  const slow = { rounds: 6, speedStart: 90, speedStep: 0, speedMax: 90, zoneStart: 140, zoneMin: 140, zoneStep: 0 };
+  const g = await openGame(browser, server, { archetype: "timing", seed: 3, params: slow });
+  try {
+    await g.play();
+    // Ждём, пока маркер войдёт в зону, и тапаем мышью в углу канвы: тач-цель —
+    // вся канва, а не полоска маркера.
+    let st = null;
+    for (let guard = 0; guard < 400; guard++) {
+      st = await g.scene(() => window.__zvBot.timing());
+      if (st && !st.locked && Math.abs(st.pos - st.center) <= st.zone.w / 4) break;
+      await g.page.waitForTimeout(20);
+    }
+    assert.ok(st && !st.locked, "маркер так и не дошёл до центра зоны");
+    const before = st.score;
+    await g.tap(12, 600);
+    await g.page.waitForTimeout(250);
+    const after = await g.scene(() => window.__zvBot.timing());
+    assert.ok(after.score > before, "тап мышью по краю канвы не засчитан — тач-цель не вся канва");
+    assert.equal(after.lives, st.lives, "попадание отняло жизнь");
+    // Теперь ждём момента ВНЕ зоны и тапаем: обязан быть промах и минус жизнь.
+    let out = null;
+    for (let guard = 0; guard < 400; guard++) {
+      out = await g.scene(() => window.__zvBot.timing());
+      if (out && !out.locked && (out.pos < out.zone.x - 20 || out.pos > out.zone.x + out.zone.w + 20)) break;
+      await g.page.waitForTimeout(20);
+    }
+    assert.ok(out && !out.locked, "маркер так и не вышел из зоны");
+    await g.tap(180, 600);
+    await g.page.waitForTimeout(250);
+    const miss = await g.scene(() => window.__zvBot.timing());
+    assert.equal(miss.lives, out.lives - 1, "тап вне зоны не снял жизнь");
+    assert.deepEqual(g.errors, [], "ошибки страницы");
+  } finally { await g.close(); }
+});
+
+test("timing: нечестные params — экран ошибки и событие error, а не игра, в которую не попасть", async () => {
+  // Зона 28 px на 520 px/с — 54 мс: три кадра, попасть нельзя.
+  const g = await openGame(browser, server, {
+    archetype: "timing", seed: 1,
+    params: { rounds: 10, speedStart: 220, speedStep: 40, speedMax: 520, zoneStart: 96, zoneMin: 28, zoneStep: 8 }
+  });
+  try {
+    const err = await g.expect("error", () => g.play(), 5000);
+    assert.equal(err.details.length, 1, JSON.stringify(err));
+    // В тексте — раунд, оба числа и обе готовые подсказки для config.params.
+    assert.match(err.details[0], /зона \d+ px на скорости \d+ px\/с проходится за \d+ мс/);
+    assert.match(err.details[0], /zoneMin не меньше \d+/);
+    assert.match(err.details[0], /speedMax не больше \d+/);
+    // Ошибка в консоли — ожидаемая и единственная.
+    assert.equal(g.errors.length, 1, g.errors.join("\n"));
+    assert.ok(g.errors[0].includes("Нечестные параметры"));
+  } finally { await g.close(); }
+});
+
+test("timing: кит играется из сюжета под ключом zv-mini и возвращает счёт в переменную", async () => {
+  // Узел play с kit: "timing" (фикстура tests/fixtures/hybrid-timing.json):
+  // партия идёт внутри сюжета, экрана результата нет, счёт ложится в vars.aim
+  // и открывает ветку. Проверяем ровно то, ради чего кит в PLAYABLE.
+  const g = await openGame(browser, server, {
+    archetype: "novel", seed: 8, params: { typeMs: 0 },
+    contentUrl: { novel: "/tests/fixtures/hybrid-timing.json" }
+  });
+  try {
+    const m = await g.mark();
+    await g.play();
+    await g.page.waitForTimeout(200);
+    await g.tap(180, 380);                       // линейный узел «дальше» → lock
+    await g.page.waitForTimeout(400);
+    const before = await g.scene(() => window.__zvBot.hybrid());
+    assert.equal(before.node, "lock");
+    assert.ok(before.start && before.start.label === "Ловить момент", JSON.stringify(before));
+    await g.tap(before.start.x, before.start.y);
+    await g.page.waitForTimeout(400);
+    const during = await g.scene(() => window.__zvBot.hybrid());
+    assert.equal(during.mini, "zv-mini", "сцена кита обязана жить под ключом zv-mini");
+    assert.equal(during.storySleeping, true, "сюжетная сцена во время мини-игры спит");
+    // Параметры узла дошли до кита поверх config.params — партия на 4 раунда.
+    const st = await g.scene(() => window.__zvBot.timing());
+    assert.ok(st && st.rounds === 4, "проба не видит мини-игру или params узла: " + JSON.stringify(st));
+    await g.bot("timing", "expert");
+    const fin = await g.waitFinish(m, 40000);
+    assert.equal(fin.meta.mini, true);
+    assert.equal(fin.meta.archetype, "timing");
+    assert.equal(fin.meta.node, "lock");
+    assert.ok(fin.score >= 30, "эксперт обязан взять порог узла: " + fin.score);
+    // Возврат в сюжет: zv-mini снята, экрана результата нет, счёт в переменной.
+    await g.page.waitForTimeout(1500);
+    const after = await g.scene(() => ({
+      h: window.__zvBot.hybrid(),
+      keys: window.ZV.game.scene.scenes.map((s) => s.sys.settings.key),
+      result: window.ZV.game.scene.getScene("zv-result").sys.isActive()
+    }));
+    assert.ok(!after.keys.includes("zv-mini"), "сцена мини-игры обязана сниматься: " + after.keys.join(", "));
+    assert.equal(after.result, false, "экран результата внутри сюжета не показывается");
+    assert.equal(after.h.node, "open", "победа в ките не увела сюжет по своей ветке: " + after.h.node);
+    assert.ok(after.h.vars.aim >= 30, "счёт мини-игры не лёг в переменную сюжета: " + JSON.stringify(after.h.vars));
+    clean(g);
+  } finally { await g.close(); }
+});
