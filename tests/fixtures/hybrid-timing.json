@@ -1,0 +1,69 @@
+{
+  "start": "intro",
+  "vars": { "aim": 0 },
+  "chapters": ["intro", "lock", "after"],
+  "nodes": {
+    "intro": {
+      "bg": "hall",
+      "portrait": "hero",
+      "speaker": "Взломщик",
+      "text": "Замок с бегунком: стрелка ходит по шкале, поймать надо зелёный сектор.",
+      "goto": "lock"
+    },
+    "lock": {
+      "bg": "hall",
+      "portrait": "hero",
+      "speaker": "Взломщик",
+      "text": "Пальцы на месте. Теперь только момент.",
+      "play": {
+        "kit": "timing",
+        "params": { "rounds": 4, "passScore": 30 },
+        "score": "aim",
+        "startLabel": "Ловить момент",
+        "rules": "Тапни, когда стрелка в зелёном",
+        "outcomes": [
+          { "if": { "won": true }, "goto": "open" },
+          { "goto": "jammed" }
+        ]
+      }
+    },
+    "open": {
+      "bg": "hall",
+      "portrait": "hero",
+      "speaker": "Взломщик",
+      "text": "Щелчок. Дверь поддаётся.",
+      "goto": "after"
+    },
+    "jammed": {
+      "bg": "hall",
+      "portrait": "hero",
+      "speaker": "Взломщик",
+      "text": "Бегунок сорвался, механизм заклинило.",
+      "goto": "after"
+    },
+    "after": {
+      "bg": "hall",
+      "portrait": "hero",
+      "speaker": "Взломщик",
+      "text": "Дальше — как получится.",
+      "choices": [
+        { "text": "Войти", "goto": "inside", "if": { "aim": 30 } },
+        { "text": "Уйти ни с чем", "goto": "away" }
+      ]
+    },
+    "inside": {
+      "bg": "hall",
+      "portrait": "hero",
+      "speaker": "Взломщик",
+      "text": "Внутри тихо и пусто.",
+      "end": { "outcome": "inside", "title": "Открыто", "text": "Момент пойман.", "won": true }
+    },
+    "away": {
+      "bg": "hall",
+      "portrait": "hero",
+      "speaker": "Взломщик",
+      "text": "Замок остался запертым.",
+      "end": { "outcome": "away", "title": "Мимо", "text": "Момент упущен.", "won": false }
+    }
+  }
+}
