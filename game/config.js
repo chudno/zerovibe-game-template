@@ -10,6 +10,8 @@ window.ZV_GAME = {
   // "memory" |
   // "clicker" |
   // "sort" |
+  // week5: match3
+  // "match3" |
   // Выбирает кит в game/kits/. Описание и параметры — game/kits/<archetype>/README.md.
   archetype: "runner",
 

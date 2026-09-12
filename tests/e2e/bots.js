@@ -204,8 +204,60 @@
       state.lastTapAt = now;
       state.taps++;
       sc.hero.emit("pointerdown");
+    },
+    // week5: match3 bot
+    // Три в ряд: эксперт берёт лучший ход из ЯДРА по текущему полю сцены
+    // (ZV_MATCH3.best) и отыгрывает его тап-тапом — двумя парами
+    // pointerdown/pointerup по центрам клеток, ровно как палец. Новичок жмёт
+    // случайную пару соседей: большинство таких обменов ничего не собирает, а
+    // ход всё равно тратится. Инвариант каждого кадра — поле полное и без
+    // готовых совпадений: это то, что человек видит на экране.
+    match3: function (sc) {
+      var M = global.ZV_MATCH3;
+      if (typeof sc.score === "number" && (!finite(sc.score) || sc.score < 0)) violation("счёт отрицательный или не число");
+      if (sc.tl && sc.tl.pending() >= 60) violation("таймлайн течёт: " + sc.tl.pending() + " шагов");
+      if (!sc.board || !sc.layout) return;
+      // Инвариант проверяем только в покое: посреди каскада поле законно
+      // разобрано, и «пустая клетка» там — не ошибка, а кадр анимации.
+      if (!sc.tl.busy()) {
+        for (var q = 0; q < sc.board.cells.length; q++) {
+          if (!(sc.board.cells[q] >= 1)) { violation("в поле пустая клетка вне каскада"); break; }
+        }
+        if (M.matches(sc.board).cleared.length) violation("на поле осталось готовое совпадение");
+        if (sc.tiles && sc.tiles.length !== sc.board.cells.length) violation("фишек на сцене не столько, сколько клеток");
+      }
+      if (sc.tl.busy() || sc.over) return;
+      // Пауза между ходами: ввод кита живёт на pointerdown/pointerup, и два
+      // хода в одном кадре сложились бы в один свайп.
+      if (state.frames - (state.m3At || 0) < 4) return;
+      state.m3At = state.frames;
+
+      var mv = null;
+      if (state.mode === "novice") {
+        var i = global.ZV.random.between(0, sc.board.cells.length - 1);
+        var p = M.cell(sc.board, i);
+        var right = global.ZV.random.chance(0.5);
+        var j = global.ZV.grid.at(sc.layout, p.c + (right ? 1 : 0), p.r + (right ? 0 : 1));
+        if (j < 0) return;
+        mv = { a: i, b: j };
+      } else {
+        mv = M.best(sc.board);
+        if (!mv) return;                       // тупик — кит перемешает сам
+        state.m3Moves = (state.m3Moves || 0) + 1;
+      }
+      m3Tap(sc, mv.a);
+      m3Tap(sc, mv.b);
     }
   };
+
+  // Тап по центру клетки: pointerdown и pointerup в одной точке — свайпом кит
+  // это не считает (сдвиг меньше swipeMin), значит идёт путь «тап-тап».
+  function m3Tap(sc, i) {
+    var c = sc.layout.cells[i];
+    if (!c) return;
+    sc.input.emit("pointerdown", { x: c.cx, y: c.cy });
+    sc.input.emit("pointerup", { x: c.cx, y: c.cy });
+  }
 
   function step(game) {
     if (state.stopped) return;
@@ -346,6 +398,20 @@
       for (i = 0; i < sc.cards.length; i++) if (closed(i) && seen[i] === undefined) return i;
       for (i = 0; i < sc.cards.length; i++) if (closed(i)) return i;
       return -1;
+    },
+    // week5: match3 probe
+    // Три в ряд: поле, раскладка и счётчики — тест тапает мышью по центрам
+    // клеток и сам считает лучший ход тем же ядром, что и игра.
+    match3: function () {
+      var sc = global.ZV.game.scene.getScene("zv-play");
+      if (!sc || !sc.sys.isActive() || !sc.board || !sc.layout) return null;
+      return {
+        cols: sc.board.cols, rows: sc.board.rows, cells: sc.board.cells.slice(),
+        layout: sc.layout.cells.map(function (c) { return { i: c.i, x: c.cx, y: c.cy, w: c.w, h: c.h }; }),
+        score: sc.score, movesLeft: sc.movesLeft, movesUsed: sc.movesUsed,
+        cleared: sc.cleared, shuffles: sc.shuffles, bestCascade: sc.bestCascade,
+        picked: sc.picked, busy: sc.tl.busy(), over: !!sc.over
+      };
     },
     // Кликер: счёт, темп, стадия, нужда, готовность ухода и КООРДИНАТЫ карточек
     // апгрейдов — бот тапает настоящей мышью, значит должен знать, куда.

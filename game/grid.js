@@ -7,7 +7,11 @@
 (function (root) {
   "use strict";
 
-  var LIMITS = { minTouch: 24, maxCells: 30, maxCols: 6 };
+  // week5: match3 — потолок ячеек поднят с 30 до 72 (поле «три в ряд» это
+  // 8×9 клеток); он и был не про механику, а страховкой от «разложи тысячу
+  // кнопок». Тач-цель по-прежнему держит minTouch: ячейка меньше 24 px
+  // возвращает fits:false с числом, сколько влезет.
+  var LIMITS = { minTouch: 24, maxCells: 72, maxCols: 6 };
   var DEFAULT_MIN = { w: 24, h: 24 };
   var DEFAULT_GAP = 8;
 
