@@ -1219,3 +1219,197 @@ test("hidden: битый контент — экран ошибки и собы�
     assert.ok(g.errors[0].includes("content/hidden.json"));
   } finally { await g.close(); }
 });
+
+// week5: match3 -----------------------------------------------------------------
+// Ядро играет в node, кит — в Chromium: эксперт каждый ход берёт тот же
+// ZV_MATCH3.best(), которым считает валидатор, и обязан взять цель. Инвариант
+// «поле полное и без готовых совпадений» держит бот каждый кадр (bots.js).
+const MATCH3 = require("../../game/match3.js");
+
+// Дождаться покоя: каскад и падения идут лентой шагов, тапать посреди них
+// нельзя — кит и сам не пустит, но тест иначе бы просто гонял впустую.
+async function match3State(g) {
+  for (let guard = 0; guard < 400; guard++) {
+    const st = await g.scene(() => window.__zvBot.match3());
+    if (st && !st.busy) return st;
+    await g.page.waitForTimeout(50);
+  }
+  return null;
+}
+
+const boardOf = (st) => MATCH3.make(st.cols, st.rows, st.cells);
+// Мультимножество видов на поле: перемешивание обязано его сохранить.
+function tally(cells) {
+  const out = {};
+  for (const k of cells) out[k] = (out[k] || 0) + 1;
+  return out;
+}
+
+test("match3: эксперт берёт цель за отведённые ходы, поле остаётся полным и без совпадений", async () => {
+  const g = await openGame(browser, server, {
+    archetype: "match3", seed: 12, params: { moves: 20, targetScore: 600 }
+  });
+  try {
+    const m = await g.mark();
+    await g.play();
+    await g.bot("match3", "expert");
+    const fin = await g.waitFinish(m, 90000);
+    const rep = await g.botReport();
+    assert.equal(fin.won, true, JSON.stringify({ fin, rep }));
+    assert.equal(fin.meta.archetype, "match3");
+    assert.ok(fin.score >= 600, "цель не взята: " + fin.score);
+    assert.ok(fin.meta.moves <= 20, "ходов потрачено больше лимита: " + fin.meta.moves);
+    assert.ok(fin.meta.cleared >= 20, "собрано подозрительно мало фишек: " + fin.meta.cleared);
+    clean(g, rep);
+  } finally { await g.close(); }
+});
+
+test("match3: новичок со случайными обменами цель не берёт — ходы кончаются", async () => {
+  const g = await openGame(browser, server, {
+    archetype: "match3", seed: 12, params: { moves: 20, targetScore: 600 }
+  });
+  try {
+    const m = await g.mark();
+    await g.play();
+    await g.bot("match3", "novice");
+    const fin = await g.waitFinish(m, 90000);
+    const rep = await g.botReport();
+    assert.equal(fin.won, false, "игра, которая проходится случайными обменами, не игра: " + JSON.stringify(fin));
+    assert.equal(fin.meta.movesLeft, 0, "проигрыш должен быть по ходам: " + JSON.stringify(fin.meta));
+    clean(g, rep);
+  } finally { await g.close(); }
+});
+
+test("match3: тап-тап настоящей мышью делает ход, а неудачный обмен его тратит впустую", async () => {
+  const g = await openGame(browser, server, {
+    archetype: "match3", seed: 3, params: { moves: 20, targetScore: 600 }
+  });
+  try {
+    await g.play();
+    let st = await match3State(g);
+    assert.ok(st, "поле не поднялось");
+    const b = boardOf(st);
+    const mv = MATCH3.best(b);
+    assert.ok(mv, "на раздаче нет ни одного хода");
+
+    // Выбор фишки виден: контур ставится по первому тапу.
+    const a = st.layout.find((c) => c.i === mv.a);
+    const c2 = st.layout.find((c) => c.i === mv.b);
+    await g.tap(a.x, a.y);
+    const picked = await g.scene(() => window.__zvBot.match3());
+    assert.equal(picked.picked, mv.a, "первый тап не выбрал фишку");
+
+    const before = st.score;
+    await g.tap(c2.x, c2.y);
+    const after = await match3State(g);
+    assert.ok(after.score > before, "верный обмен не дал очков");
+    assert.equal(after.movesUsed, 1, "ход не засчитан");
+    assert.equal(after.picked, -1, "выбор не снялся после хода");
+
+    // Обмен, который ничего не собирает: очков нет, а ход потрачен
+    // (wrongCostsMove по умолчанию включён — иначе тыканье наугад бесплатно).
+    const st2 = await match3State(g);
+    const board2 = boardOf(st2);
+    const good = new Set(MATCH3.moves(board2).map((x) => x.a + ":" + x.b));
+    let bad = null;
+    for (let i = 0; i < board2.cells.length && !bad; i++) {
+      const p = MATCH3.cell(board2, i);
+      if (p.c + 1 >= board2.cols) continue;
+      const j = MATCH3.idx(board2, p.c + 1, p.r);
+      if (!good.has(i + ":" + j) && board2.cells[i] !== board2.cells[j]) bad = [i, j];
+    }
+    assert.ok(bad, "на поле не нашлось ни одного бесполезного обмена");
+    const pa = st2.layout.find((c) => c.i === bad[0]);
+    const pb = st2.layout.find((c) => c.i === bad[1]);
+    await g.tap(pa.x, pa.y);
+    await g.tap(pb.x, pb.y);
+    const after2 = await match3State(g);
+    assert.equal(after2.score, st2.score, "бесполезный обмен дал очки");
+    assert.equal(after2.movesUsed, st2.movesUsed + 1, "бесполезный обмен не потратил ход");
+    // И поле не поехало: фишки качнулись и вернулись на свои места.
+    assert.deepEqual(after2.cells, st2.cells, "неудачный обмен всё-таки переставил фишки");
+    assert.deepEqual(g.errors, [], "ошибки страницы");
+  } finally { await g.close(); }
+});
+
+test("match3: свайп настоящей мышью делает тот же ход, что и тап-тап", async () => {
+  const g = await openGame(browser, server, {
+    archetype: "match3", seed: 3, params: { moves: 20, targetScore: 600 }
+  });
+  try {
+    await g.play();
+    const st = await match3State(g);
+    const b = boardOf(st);
+    const mv = MATCH3.best(b);
+    assert.ok(mv, "на раздаче нет ни одного хода");
+    const from = st.layout.find((c) => c.i === mv.a);
+    const to = st.layout.find((c) => c.i === mv.b);
+
+    // Настоящая мышь по канве iframe: жмём на фишке, ведём к соседней,
+    // отпускаем. Сдвиг заведомо больше swipeMin (ячейка ≈52 px).
+    const box = await g.frame.locator("canvas").boundingBox();
+    const sx = box.x + (from.x / 360) * box.width;
+    const sy = box.y + (from.y / 640) * box.height;
+    const ex = box.x + (to.x / 360) * box.width;
+    const ey = box.y + (to.y / 640) * box.height;
+    await g.page.mouse.move(sx, sy);
+    await g.page.mouse.down();
+    await g.page.mouse.move(ex, ey, { steps: 6 });
+    await g.page.mouse.up();
+
+    const after = await match3State(g);
+    assert.ok(after.score > st.score, "свайп не собрал линию: " + JSON.stringify({ before: st.score, after: after.score }));
+    assert.equal(after.movesUsed, 1, "свайп не засчитан ходом");
+    assert.equal(after.picked, -1, "свайп оставил фишку выбранной");
+    assert.deepEqual(g.errors, [], "ошибки страницы");
+  } finally { await g.close(); }
+});
+
+test("match3: нет ходов — поле перемешивается теми же фишками, без зависания", async () => {
+  // Поле 4×4 на пяти видах запирается почти каждую партию: играем экспертом и
+  // проверяем, что кит сам объявил перемешивание, состав фишек при этом не
+  // изменился, а партия дошла до конца, а не встала на тупике.
+  const g = await openGame(browser, server, {
+    archetype: "match3", seed: 8,
+    params: { cols: 4, rows: 4, kinds: 5, moves: 20, targetScore: 700 }
+  });
+  try {
+    const m = await g.mark();
+    await g.play();
+    const first = await match3State(g);
+    assert.ok(first, "поле не поднялось");
+    const before = tally(first.cells);
+    await g.bot("match3", "expert");
+
+    // Ловим момент сразу после перемешивания: состав фишек обязан совпасть с
+    // тем, что было на поле ДО него.
+    let seen = null, last = first;
+    for (let guard = 0; guard < 400 && !seen; guard++) {
+      const st = await g.scene(() => window.__zvBot.match3());
+      if (!st || st.over) break;
+      if (!st.busy && st.shuffles > 0 && last.shuffles === 0) seen = { before: tally(last.cells), after: tally(st.cells) };
+      if (st && !st.busy) last = st;
+      await g.page.waitForTimeout(40);
+    }
+    const fin = await g.waitFinish(m, 90000);
+    const rep = await g.botReport();
+    assert.ok(fin.meta.shuffles >= 1, "за 20 ходов на поле 4×4 ни одного тупика: " + JSON.stringify(fin.meta));
+    assert.equal(fin.meta.movesLeft === 0 || fin.won, true, "партия встала: " + JSON.stringify(fin.meta));
+    if (seen) assert.deepEqual(seen.after, seen.before, "перемешивание подменило фишки");
+    assert.ok(before, "состав стартового поля не прочитан");
+    clean(g, rep);
+  } finally { await g.close(); }
+});
+
+test("match3: битый контент — экран ошибки, а не белая страница", async () => {
+  const g = await openGame(browser, server, {
+    archetype: "match3", seed: 1,
+    content: { match3: { goal: { title: "Цель" }, kinds: [{ id: "a", title: "А", color: "#2e9e5b", shape: "circle" }] } }
+  });
+  try {
+    const err = await g.expect("error", () => g.play(), 5000);
+    assert.ok(err.details.length >= 1 && err.details[0].includes("kinds"), JSON.stringify(err));
+    assert.equal(g.errors.length, 1, g.errors.join("\n"));
+    assert.ok(g.errors[0].includes("content/match3.json"));
+  } finally { await g.close(); }
+});

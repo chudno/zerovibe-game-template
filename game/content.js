@@ -80,7 +80,11 @@
     binTitleSmall: { width: 76,  lines: 2, k: 1 }, // то же при 4 корзинах
     // week5:hidden
     hiddenTitle:   { width: 76,  lines: 1, k: 1 }, // подпись предмета на полке «найди предмет» (ячейка 84 px минус поля)
-    sortItem:      { width: 120, lines: 1, k: 1 } // подпись под предметом на ленте
+    sortItem:      { width: 120, lines: 1, k: 1 }, // подпись под предметом на ленте
+    // week5: match3
+    goalTitle:     { width: 200, lines: 1, k: 1 }, // подпись цели «три в ряд» в HUD
+    goalText:      { width: 290, lines: 2, k: 1 }, // строка-пояснение цели на экране результата
+    kindTitle:     { width: 90,  lines: 1, k: 1 } // название вида фишки (тост «нет ходов», отладка)
   };
   var MAX_LEN = 240;   // страховка от абзацев там, где ждём строку
 
@@ -627,6 +631,110 @@
     return errs;
   }
 
+  // week5: match3 — «три в ряд»: словарь видов фишек и цель. Форма данных
+  // здесь, ДОСТИЖИМОСТЬ цели — прогоном ядра (game/match3.js) на нескольких
+  // сидах: targetScore, который не набирается за moves ходов даже лучшей
+  // игрой, это не сложность, а тупик; и наоборот — цель, которую берёт первый
+  // попавшийся ход, делает ходы и каскады декорацией.
+  var MATCH3 = (typeof module !== "undefined" && module.exports) ? require("./match3.js") : root.ZV_MATCH3;
+  var RANDOM3 = (typeof module !== "undefined" && module.exports) ? require("./random.js") : root.ZV_RANDOM;
+  // Сиды пробы фиксированы: проверка обязана давать один и тот же ответ на
+  // одном и том же контенте, иначе тест мигает.
+  var MATCH3_SEEDS = [1, 7, 23, 64, 101];
+  // Заглушки фишек различаются формой, а не только цветом — иначе при пяти
+  // видах поле читается как цветовой шум. Список = формы, которые умеет кит.
+  var MATCH3_SHAPES = ["circle", "diamond", "square", "cross", "bar", "triangle", "ring"];
+
+  // Лучшая игра берётся по ХУДШЕМУ сиду («цель достижима на любой раздаче»),
+  // случайная — по СРЕДИННОМУ («типичный тычок цель не берёт»). Брать у
+  // случайной максимум нельзя: один сид с жирным каскадом даёт больше, чем
+  // гарантированный потолок лучшей игры, и валидатору не остаётся ни одного
+  // допустимого targetScore.
+  function match3Play(params, mode) {
+    var list = [], i;
+    for (i = 0; i < MATCH3_SEEDS.length; i++) list.push(MATCH3.play(params, RANDOM3.create(MATCH3_SEEDS[i]), mode));
+    list.sort(function (a, b) { return a.score - b.score; });
+    return mode === "random" ? list[Math.floor(list.length / 2)] : list[0];
+  }
+
+  function validateMatch3(data, opts) {
+    var errs = [];
+    var kinds = data && data.kinds, goal = data && data.goal;
+    var lim = MATCH3.LIMITS;
+    if (!Array.isArray(kinds) || kinds.length < lim.minKinds || kinds.length > lim.maxKinds) {
+      return ["kinds: массив от " + lim.minKinds + " до " + lim.maxKinds + " видов фишек"];
+    }
+    if (!goal || typeof goal !== "object") errs.push("goal: объект {title, text}");
+    else {
+      textErr(errs, "goal", goal.title, "title", "goalTitle");
+      if (goal.text !== undefined && typeof goal.text !== "string") errs.push("goal: text — строка");
+      else if (goal.text) fitErr(errs, "goal", goal.text, "text", "goalText");
+    }
+
+    var ids = {}, titles = {}, shapes = {}, colors = {};
+    kinds.forEach(function (k, i) {
+      var w = "kinds[" + i + "]";
+      if (!k || typeof k !== "object") { errs.push(w + ": объект {id, title, color, shape}"); return; }
+      if (!/^[a-z0-9_-]{1,32}$/.test(String(k.id))) errs.push(w + ": id — латиница/цифры/-/_ до 32");
+      else if (ids[k.id]) errs.push(w + ": id «" + k.id + "» повторяется");
+      else ids[k.id] = true;
+      textErr(errs, w, k.title, "title", "kindTitle");
+      // Сравнение через undefined, а не по правдивости: kinds[0] это индекс 0,
+      // и «if (titles[…])» пропустил бы повтор подписи первого вида.
+      if (typeof k.title === "string" && k.title) {
+        if (titles[k.title] !== undefined) errs.push(w + ": подпись «" + k.title + "» уже у kinds[" + titles[k.title] + "]");
+        else titles[k.title] = i;
+      }
+      if (!/^#[0-9a-fA-F]{6}$/.test(String(k.color))) errs.push(w + ": color — #rrggbb");
+      else if (colors[String(k.color).toLowerCase()] !== undefined) {
+        errs.push(w + ": цвет " + k.color + " уже у kinds[" + colors[String(k.color).toLowerCase()] + "] — фишки не различить");
+      } else colors[String(k.color).toLowerCase()] = i;
+      if (MATCH3_SHAPES.indexOf(String(k.shape)) < 0) {
+        errs.push(w + ".shape: одна из форм — " + MATCH3_SHAPES.join(", ") + " (сейчас «" + k.shape + "»)");
+      } else if (shapes[k.shape] !== undefined) {
+        // Цвет на телефоне при беглой игре читается хуже формы, и два вида
+        // одной формы игрок путает даже при разных цветах.
+        errs.push(w + ": форма «" + k.shape + "» уже у kinds[" + shapes[k.shape] + "] — фишки различаются только цветом");
+      } else shapes[k.shape] = i;
+      if (k.icon !== undefined && !/^[a-z0-9_:-]{1,32}$/.test(String(k.icon))) errs.push(w + ".icon: ключ картинки — латиница/цифры/-/_/: до 32");
+    });
+    if (errs.length) return errs;
+
+    // Параметры кита: видов на поле не больше, чем описано в словаре, —
+    // иначе кит рисовал бы фишку, о которой в контенте ничего нет.
+    var p = (opts && opts.params) || null;
+    if (!p) return errs;
+    var use = Math.round(Number(p.kinds));
+    if (isFinite(use) && use > kinds.length) {
+      errs.push("params.kinds " + use + ", а в kinds описано " + kinds.length +
+        " видов — добавь вид или опусти params.kinds до " + kinds.length);
+      return errs;
+    }
+    var target = Number(p.targetScore);
+    if (!isFinite(target) || target <= 0) return errs;
+
+    // Достижимость: худший из пробных сидов при лучшей игре. Считаем по
+    // ТОМУ ЖЕ ядру, что играет кит, — обещание не расходится с игрой.
+    var top = match3Play(p, "best");
+    if (top.score < target) {
+      errs.push("params.targetScore " + target + " не набирается за " + top.moves +
+        " ходов даже лучшей игрой — на трудном сиде выходит " + top.score +
+        ". Опусти targetScore до " + Math.floor(top.score * 0.8) + " или добавь ходов");
+      return errs;
+    }
+    // Слишком легко: цель берётся случайными тычками по соседним фишкам, где
+    // промах тоже тратит ход. Тогда игра проходится сама, и ходы с каскадами
+    // становятся декорацией.
+    var dumb = match3Play(p, "random");
+    if (dumb.score >= target) {
+      errs.push("params.targetScore " + target + " набирается случайными тычками (на везучем сиде " +
+        dumb.score + " за " + dumb.hits + " удачных обменов из " + dumb.moves +
+        ") — выбор хода ничего не решает. Подними targetScore минимум до " + (Math.ceil(dumb.score / 100) * 100 + 100) +
+        " или убавь moves");
+    }
+    return errs;
+  }
+
   // По ключу на строку: новый кит дописывает СВОЮ строку под маркером и не
   // трогает чужие — иначе параллельные ветки дерутся за одну длинную строку.
   var validators = {
@@ -639,9 +747,11 @@
     // week4
     memory: validateMemory,
     clicker: validateClicker,
+    sort: validateSort,
     // week5:hidden
     hidden: validateHidden,
-    sort: validateSort
+    // week5: match3
+    match3: validateMatch3
   };
 
   function validate(kind, data, opts) {

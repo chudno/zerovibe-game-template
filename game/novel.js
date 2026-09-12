@@ -17,8 +17,8 @@
   // входят: сюжет внутри сюжета — второй граф в том же рантайме. Каталог
   // game/kits/* сверяется с этим списком линтом (tests/kits.test.js), иначе
   // новый кит молча не запускается из сюжета.
-  // week5:hidden — «найди предмет» добавлен в конец списка
-  var PLAYABLE = ["runner", "catch", "quiz", "persona", "wheel", "platformer", "memory", "clicker", "sort", "hidden"];
+  // week5: hidden, match3, timing — мини-игры недели 5 тоже играются из узла play
+  var PLAYABLE = ["runner", "catch", "quiz", "persona", "wheel", "platformer", "memory", "clicker", "sort", "hidden", "match3", "timing"];
 
   function isObj(v) { return !!v && typeof v === "object" && !Array.isArray(v); }
   function has(o, k) { return Object.prototype.hasOwnProperty.call(o, k); }

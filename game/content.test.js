@@ -229,3 +229,52 @@ test("clicker: showUpgrades 0 — «цель достижима» не выда�
   assert.deepEqual(C.validate("clicker", base(), { params: { showUpgrades: 1 } }), []);
   assert.deepEqual(C.validate("clicker", base(), { params: {} }), []);
 });
+
+// week5: match3
+test("match3: словарь фишек — id, подпись, цвет и форма различимы", () => {
+  const base = () => JSON.parse(JSON.stringify(load("match3.json")));
+  assert.deepEqual(C.validate("match3", base()), []);
+
+  assert.ok(C.validate("match3", { goal: base().goal, kinds: base().kinds.slice(0, 2) })[0].includes("от 3 до 7"));
+  let d = base(); d.kinds.push(...base().kinds, ...base().kinds);
+  assert.ok(C.validate("match3", d)[0].includes("от 3 до 7"), "восемь видов должны отсекаться");
+
+  d = base(); d.kinds[1].id = d.kinds[0].id;
+  assert.ok(C.validate("match3", d).some((e) => e.includes("повторяется")), JSON.stringify(C.validate("match3", d)));
+  d = base(); d.kinds[1].title = d.kinds[0].title;
+  assert.ok(C.validate("match3", d).some((e) => e.includes("подпись")), JSON.stringify(C.validate("match3", d)));
+  // Цвет и форма — разные жалобы: фишки, различимые только цветом, на телефоне
+  // сливаются, и сказать об этом надо отдельно от «совпал цвет».
+  d = base(); d.kinds[1].color = d.kinds[0].color;
+  assert.ok(C.validate("match3", d).some((e) => e.includes("не различить")), JSON.stringify(C.validate("match3", d)));
+  d = base(); d.kinds[1].shape = d.kinds[0].shape;
+  assert.ok(C.validate("match3", d).some((e) => e.includes("различаются только цветом")), JSON.stringify(C.validate("match3", d)));
+  d = base(); d.kinds[1].shape = "звезда";
+  assert.ok(C.validate("match3", d).some((e) => e.includes("одна из форм")), JSON.stringify(C.validate("match3", d)));
+  d = base(); d.kinds[0].color = "зелёный";
+  assert.ok(C.validate("match3", d).some((e) => e.includes("#rrggbb")));
+  d = base(); delete d.goal;
+  assert.ok(C.validate("match3", d).some((e) => e.includes("goal")));
+});
+
+// Достижимость цели считается прогоном ЯДРА на фиксированных сидах: тем же,
+// которым играет кит. Проверяем обе стороны — тупик и «проходится само».
+test("match3: targetScore сверяется с moves прогоном партии", () => {
+  const data = load("match3.json");
+  const P = { cols: 6, rows: 7, kinds: 5, moves: 20, targetScore: 600, base: 10, cascadeStep: 1, lineBonus: 20 };
+  assert.deepEqual(C.validate("match3", data, { params: P }), [], "дефолты кита обязаны проходить");
+
+  let e = C.validate("match3", data, { params: { ...P, targetScore: 99999 } });
+  assert.ok(e[0].includes("не набирается за 20 ходов даже лучшей игрой") && /выходит \d+/.test(e[0]), e.join(" | "));
+  e = C.validate("match3", data, { params: { ...P, targetScore: 10 } });
+  assert.ok(e[0].includes("набирается случайными тычками"), e.join(" | "));
+  // Ходов меньше — та же цель становится недостижимой, и это сказано числом.
+  e = C.validate("match3", data, { params: { ...P, moves: 3 } });
+  assert.ok(e[0].includes("не набирается за 3 ходов"), e.join(" | "));
+  // Видов на поле больше, чем описано в словаре: кит рисовал бы фишку,
+  // про которую в контенте ничего нет.
+  e = C.validate("match3", data, { params: { ...P, kinds: 7 } });
+  assert.ok(e[0].includes("в kinds описано 5 видов"), e.join(" | "));
+  // Без params проверка формы всё равно работает (валидатор зовут и так).
+  assert.deepEqual(C.validate("match3", data, {}), []);
+});

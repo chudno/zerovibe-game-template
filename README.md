@@ -29,7 +29,8 @@ game/config.js        НАСТРОЙКИ ИГРЫ: название, архет�
 content/*.json        ТЕКСТЫ, УРОВНИ И СЮЖЕТ китов: quiz (вопросы),
                       persona (типы и вопросы), wheel (исходы с весами), levels
                       (карты платформера), novel (граф сюжета), quest (граф
-                      с предметами), clicker (цель, стадии, апгрейды)
+                      с предметами), clicker (цель, стадии, апгрейды),
+                      match3 (виды фишек и цель)   <- week5: match3
 game/shell.js         экраны, мобильный контур, карточка приза, события
 game/fontdata.js      пиксельный шрифт растром (сгенерирован tests/fontgen.js)
 game/font.js          метрики шрифта: ширина, перенос, подбор кегля
@@ -67,9 +68,14 @@ game/hidden.js        расстановка «найди предмет» чи�
                       минимальной дистанцией, целыми координатами и числом
                       «сколько предметов влезет» в тексте ошибки
 game/kits/hidden/     кит «Найди предмет» (+ README, content/hidden.json)
+                                                   <- week5: match3
+game/match3.js        «три в ряд» числами: раздача без готовых троек и всегда
+                      с ходом, совпадения и каскад, перемешивание, очки,
+                      прогон партии для проверки цели
+game/kits/match3/     кит «Три в ряд» (+ README, content/match3.json)
 game/main.js          выбор кита по archetype
 game/kits/*/          киты: runner, catch, quiz, persona, wheel, platformer,
-                      novel, quest, clicker (+ README)
+                      novel, quest, clicker, match3 (+ README)
 assets/               только заглушки; настоящие картинки — по ссылке
 vendor/               Phaser 3.90.0 (MIT, LICENSE-phaser в корне)
 tests/                проверки, фикстуры и headless-прогон (в публикацию
@@ -84,7 +90,7 @@ docs/brief.md         бриф и концепт игры (в публикаци
 
 1. `game/config.js` — название, `archetype` (`runner` | `catch` | `quiz` |
    `persona` | `wheel` | `platformer` | `novel` | `quest` | `clicker` |
-   `hidden`), цвета игры
+   `hidden` | `match3` | `timing`), цвета игры
    (`theme`), `params`, секция `assets`.
 2. `game/kits/<archetype>/README.md` — параметры кита (ключи `params` с
    дефолтами) и формат его файла в `content/`.
@@ -278,6 +284,12 @@ iframe.contentWindow.postMessage({ source: "zv-host", type: "restart" }, "*");
 - темп «собери заказ» (`game/sort.test.js`): на любой скорости ленты предмет
   видно не меньше 350 мс и пауза между предметами длиннее его проезда — то же
   число валидатор проверяет по `config.params` и объясняет словами;
+<!-- week5: match3 -->
+- ядро «три в ряд» (`game/match3.test.js`): раздача без готовых троек и всегда
+  с ходом на 200 сидах, совпадения с пересечениями, после каскада поле полное и
+  без совпадений, перемешивание сохраняет состав фишек, лучшая игра набирает
+  кратно больше случайных тычков — тем же прогоном валидатор сверяет
+  `targetScore` с числом ходов;
 - в статике нет имени платформы (игра живёт своей жизнью на чужом сайте), в
   корне нет `package.json`.
 

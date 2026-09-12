@@ -1,0 +1,13 @@
+{
+  "goal": {
+    "title": "Собрано",
+    "text": "Собирай по три и больше подряд"
+  },
+  "kinds": [
+    { "id": "leaf", "title": "Лист", "color": "#2e9e5b", "shape": "circle" },
+    { "id": "drop", "title": "Капля", "color": "#38bdf8", "shape": "diamond" },
+    { "id": "sun", "title": "Солнце", "color": "#d9a100", "shape": "square" },
+    { "id": "berry", "title": "Ягода", "color": "#ff5f6d", "shape": "cross" },
+    { "id": "stone", "title": "Камень", "color": "#9b59b6", "shape": "bar" }
+  ]
+}

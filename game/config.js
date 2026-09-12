@@ -12,6 +12,8 @@ window.ZV_GAME = {
   // "sort" |
   // week5:hidden
   // "hidden" |
+  // week5: match3
+  // "match3" |
   // Выбирает кит в game/kits/. Описание и параметры — game/kits/<archetype>/README.md.
   archetype: "runner",
 
