@@ -36,7 +36,9 @@ function startServer() {
 const botsSource = fs.readFileSync(path.join(__dirname, "bots.js"), "utf8");
 
 // Открыть игру в iframe хоста. opts: { archetype, seed, params, prize, theme,
-// content, contentUrl, playResult, levelsUnchecked, clearStorage }. content —
+// content, contentUrl, playResult, levelsUnchecked, clearStorage, assets }.
+// week5:catchpool — assets кладётся поверх config.assets (картинки, веса, body).
+// content —
 // подмена content/<kind>.json ответом (экран ошибок, сгенерированные уровни);
 // contentUrl — адрес файла вместо боевого content/<kind>.json (фикстура);
 // playResult { won, score } — исход мини-игры сюжета подставляется без её
@@ -65,6 +67,8 @@ async function openGame(browser, server, opts) {
         if (o.archetype) v.archetype = o.archetype;
         if (o.prize) v.prize = o.prize;
         if (o.theme) v.theme = o.theme;
+        // week5:catchpool — подмена config.assets (веса предметов, body кадра)
+        if (o.assets) v.assets = Object.assign({}, v.assets, o.assets);
         stored = v;
       }
     });

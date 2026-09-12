@@ -19,15 +19,22 @@
     goodPoints: 1,       // очки за хороший
     badPenalty: 2,       // штраф за плохой
     misses: 5,           // сколько хороших можно уронить
-    passScore: 20        // очков для победы (если дожил до конца времени)
+    passScore: 20,       // очков для победы (если дожил до конца времени)
+    maxRepeat: 2         // сколько раз подряд может выпасть один и тот же вид предмета
   };
   var S = DEFAULTS;
 
   var BASKET_Y = 560;
 
-  // Тела в единицах текстуры заглушек. Меняешь картинку — меняй эти числа.
-  var BASKET_BODY = { bodyW: 84, bodyH: 28, offsetY: 4 };
-  var ITEM_BODY = { bodyW: 20, bodyH: 20 };
+  // Размеры заглушек (когда картинки не заказаны). Тело считает
+  // ZV.sprite.apply по непрозрачной области кадра, руками его не задаём:
+  // точные числа, если они есть, приходят из config.assets.items[key].body.
+  var STUB = { basket: { w: 90, h: 32, color: 0x4f7cff }, good: { w: 22, h: 22, color: 0xffd23f }, bad: { w: 22, h: 22, color: 0xff5f6d } };
+
+  // Ключи предметов в config.assets.items: good/good2/good3 и bad/bad2/bad3.
+  // Больше трёх хороших и трёх плохих игрок не читает на лету.
+  var GOOD_KEYS = ["good", "good2", "good3"];
+  var BAD_KEYS = ["bad", "bad2", "bad3"];
 
   // Ловим предмет не только по overlap, но и по отрезку, пройденному за кадр:
   // при fallMax 410 px/с и просадке до 10 fps предмет проходит 41 px за кадр
@@ -45,9 +52,16 @@
     var items = a.items || {};
     var bg = a.background || {};
 
-    loadOrStub(this, "basket", items.basket, 90, 32, 0x4f7cff);
-    loadOrStub(this, "good", items.good, 22, 22, 0xffd23f);
-    loadOrStub(this, "bad", items.bad, 22, 22, 0xff5f6d);
+    // Корзина всегда одна; предметов — сколько заказано картинок, но хотя бы
+    // по одному виду в каждой категории (дальше это заглушки).
+    loadOrStub(this, "basket", items.basket, STUB.basket);
+    var scene = this;
+    GOOD_KEYS.concat(BAD_KEYS).forEach(function (key) {
+      if (items[key] && items[key].url) scene.load.image(key, items[key].url);
+    });
+    // Ни одной картинки в категории — рисуем её заглушку (по одной на категорию).
+    if (!ordered(items, GOOD_KEYS)) makeRect(this, "good", STUB.good.w, STUB.good.h, STUB.good.color);
+    if (!ordered(items, BAD_KEYS)) makeRect(this, "bad", STUB.bad.w, STUB.bad.h, STUB.bad.color);
 
     this.bgTile = !!bg.tile;
     if (bg.url) this.load.image("bg", bg.url);
@@ -72,8 +86,14 @@
     this.add.rectangle(W / 2, H / 2, W, H, 0x101018).setDepth(-20);
     drawBackground(this, W, H);
 
+    // Пул предметов: вид предмета выбирается взвешенно и с антиповтором
+    // (maxRepeat), а категорию — good или bad — по-прежнему решает badChance:
+    // доля вредного должна оставаться ручкой баланса, а не производной весов.
+    this.pool = ZV.pool.create(itemsFromAssets(this), ZV.random);
+
+    if (!this.textures.exists("basket")) makeRect(this, "basket", STUB.basket.w, STUB.basket.h, STUB.basket.color);
     this.basket = this.physics.add.sprite(W / 2, BASKET_Y, "basket");
-    ZV.sprite.apply(this.basket, BASKET_BODY);
+    ZV.sprite.apply(this.basket, { body: bodyOf("basket") });
     this.basket.body.setAllowGravity(false);
     this.basket.setCollideWorldBounds(true);
 
@@ -149,9 +169,15 @@
   function spawn(scene) {
     if (scene.over) return;
     var good = !global.ZV.random.chance(S.badChance);
+    var data;
+    try {
+      data = scene.pool.pick({ category: good ? "good" : "bad", maxRepeat: S.maxRepeat });
+    } catch (e) {
+      return;   // категория пуста: заглушки это исключают, но партию не роняем
+    }
     var x = global.ZV.random.between(45, global.ZV.WIDTH - 45);
-    var it = scene.items.create(x, -30, good ? "good" : "bad");
-    global.ZV.sprite.apply(it, { origin: false, bodyW: ITEM_BODY.bodyW, bodyH: ITEM_BODY.bodyH });
+    var it = scene.items.create(x, -30, data.id);
+    global.ZV.sprite.apply(it, { origin: false, body: bodyOf(data.id) });
     it.setData("good", good);
     it.setData("prevY", it.y);
     it.body.setAllowGravity(false);
@@ -206,12 +232,57 @@
     return true;
   }
 
-  function loadOrStub(scene, key, item, w, h, color) {
+  function loadOrStub(scene, key, item, stub) {
     if (item && item.url) {
       scene.load.image(key, item.url);
       return;
     }
-    makeRect(scene, key, w, h, color);
+    makeRect(scene, key, stub.w, stub.h, stub.color);
+  }
+
+  // Заказана ли хоть одна картинка из списка ключей.
+  function ordered(items, keys) {
+    for (var i = 0; i < keys.length; i++) if (items[keys[i]] && items[keys[i]].url) return true;
+    return false;
+  }
+
+  // Непрозрачная область кадра из config.assets.items[key].body — числа
+  // приходят из ответа asset_generate. Нет её — тело посчитает apply сам.
+  function bodyOf(key) {
+    var a = (global.ZV_GAME && global.ZV_GAME.assets) || {};
+    var it = (a.items || {})[key];
+    return it && it.body ? it.body : undefined;
+  }
+
+  // Предметы пула по ключам картинок: вес и категория из config.assets.
+  // Картинок нет — остаются две заглушки, по одной на категорию.
+  function itemsFromAssets(scene) {
+    var a = (global.ZV_GAME && global.ZV_GAME.assets) || {};
+    var items = a.items || {};
+    var out = [];
+    function add(keys, category) {
+      var added = [], positive = 0;
+      keys.forEach(function (key) {
+        var it = items[key];
+        if (!it || !it.url || !scene.textures.exists(key)) return;
+        var w = typeof it.weight === "number" && isFinite(it.weight) && it.weight >= 0 ? it.weight : 1;
+        if (w > 0) positive++;
+        added.push({ id: key, category: category, weight: w });
+      });
+      // Картинки не заказаны или не загрузились — играем заглушкой.
+      if (!added.length) {
+        makeRect(scene, keys[0], STUB[category].w, STUB[category].h, STUB[category].color);
+        added.push({ id: keys[0], category: category, weight: 1 });
+        positive = 1;
+      }
+      // Все веса в категории нулевые — выбирать было бы не из чего, и партия
+      // молча осталась бы без предметов. Возвращаем первому вид вес 1.
+      if (!positive) added[0].weight = 1;
+      out = out.concat(added);
+    }
+    add(GOOD_KEYS, "good");
+    add(BAD_KEYS, "bad");
+    return out;
   }
 
   function makeRect(scene, key, w, h, color) {
