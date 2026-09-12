@@ -527,6 +527,29 @@
         round: sc.round + 1, rounds: sc.roundsTotal,
         score: sc.score, lives: sc.lives, locked: !!sc.locked, over: !!sc.over
       };
+    },
+    // week5:catchpool probes
+    // Ловилка: тело корзины после ZV.sprite.apply (проверка config.assets.body)
+    // и виды предметов, которые уже выдал пул, — по ним видно и веса, и
+    // антиповтор, и что категория good/bad по-прежнему от badChance.
+    catchPool: function () {
+      var sc = global.ZV.game.scene.getScene("zv-play");
+      if (!sc || !sc.sys.isActive() || !sc.basket || !sc.pool) return null;
+      var b = sc.basket.body;
+      return {
+        basketBody: { w: b.width, h: b.height, x: b.offset.x, y: b.offset.y },
+        poolItems: sc.pool.items().map(function (it) {
+          return { id: it.id, category: it.category, weight: it.weight };
+        }),
+        falling: sc.items.getChildren().map(function (it) {
+          // Свой номер каждому предмету: проба зовётся много раз, и без него
+          // один и тот же предмет попадает в журнал повторно, изображая
+          // «три подряд». Номер выдаём при первой встрече.
+          if (typeof it.getData("zvSeq") !== "number") { it.setData("zvSeq", state.catchSeq = (state.catchSeq || 0) + 1); }
+          return { seq: it.getData("zvSeq"), key: it.texture.key, good: !!it.getData("good"),
+            body: { w: it.body.width, h: it.body.height } };
+        })
+      };
     }
   };
 })(window);

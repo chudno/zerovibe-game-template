@@ -318,7 +318,11 @@
   }
 
   var sprite = {
-    // opts: { texture, frame, anim, bodyW, bodyH, offsetX, offsetY, scale }
+    // opts: { texture, frame, anim, bodyW, bodyH, offsetX, offsetY, scale, body }
+    // body: { x, y, w, h } — непрозрачная область кадра в пикселях кадра
+    // (левый верх), ровно как её возвращает asset_generate. Это тот же
+    // bodyW/bodyH/offsetX/offsetY, только записанный так, как приходит из
+    // ответа генератора: считать смещения руками больше не надо.
     // Размеры тела — в единицах ТЕКСТУРЫ (масштаб Arcade учитывает сам).
     // scale только целый: дробный рвёт пиксельную сетку внутри спрайта.
     // Якорь спрайта ставим по низу ног (0.5, 1): при смене картинки другого
@@ -332,6 +336,15 @@
       obj.setData("zvOriginY", undefined);
 
       var spec = obj.getData("zvBody") || {};
+      // body из конфига раскладывается первым: явные bodyW/bodyH/offset*
+      // в том же вызове его перебивают — у ручных чисел последнее слово.
+      var box = opts.body;
+      if (box && typeof box === "object") {
+        if (typeof box.w === "number") spec.bodyW = box.w;
+        if (typeof box.h === "number") spec.bodyH = box.h;
+        if (typeof box.x === "number") spec.offsetX = box.x;
+        if (typeof box.y === "number") spec.offsetY = box.y;
+      }
       ["bodyW", "bodyH", "offsetX", "offsetY"].forEach(function (k) {
         if (typeof opts[k] === "number") spec[k] = opts[k];
       });

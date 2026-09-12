@@ -1565,3 +1565,119 @@ test("timing: кит играется из сюжета под ключом zv-m
     clean(g);
   } finally { await g.close(); }
 });
+
+// week5: catch (пул предметов + тело из config.assets.body)
+
+// Все три картинки — одна фикстура 32×32: тест про выбор вида и про тело,
+// а не про то, что нарисовано.
+const PIC = "/tests/fixtures/cone.png";
+
+// Сцена «zv-play» поднимается через кадр после события start, и проба до
+// этого отдаёт null — ждём её, а не спим наугад.
+async function waitProbe(g, tries) {
+  for (let guard = 0; guard < (tries || 60); guard++) {
+    const st = await g.scene(() => window.__zvBot.catchPool());
+    if (st) return st;
+    await g.page.waitForTimeout(100);
+  }
+  return null;
+}
+
+// Пул выдаёт вид предмета: весом 0 вид выключается, категорию по-прежнему
+// решает badChance (0 — ни одного плохого за партию).
+test("catch: вес 0 выключает вид предмета, badChance по-прежнему правит категорией", async () => {
+  const g = await openGame(browser, server, {
+    archetype: "catch", seed: 11,
+    params: { duration: 20000, spawnStart: 200, spawnMin: 200, badChance: 0 },
+    assets: { items: {
+      good: { url: PIC, weight: 1 }, good2: { url: PIC, weight: 0 },
+      bad: { url: PIC }
+    } }
+  });
+  try {
+    await g.play();
+    // Сцена поднимается не в том же кадре, что «start»: проба до этого — null.
+    const pool = await waitProbe(g);
+    assert.ok(pool, "проба catchPool ничего не вернула");
+    assert.deepEqual(pool.poolItems.map((i) => i.id + ":" + i.category + ":" + i.weight).sort(),
+      ["bad:bad:1", "good2:good:0", "good:good:1"], JSON.stringify(pool.poolItems));
+
+    // Копим выпавшие виды: good2 с весом 0 не обязан выпасть ни разу,
+    // плохих при badChance 0 тоже быть не должно.
+    const keys = new Set();
+    for (let guard = 0; guard < 80; guard++) {
+      const st = await g.scene(() => window.__zvBot.catchPool());
+      if (!st) { await g.page.waitForTimeout(80); continue; }
+      for (const it of st.falling) {
+        keys.add(it.key);
+        assert.equal(it.good, true, "при badChance 0 выпал плохой предмет: " + JSON.stringify(it));
+      }
+      if (keys.size >= 1 && guard > 30) break;
+      await g.page.waitForTimeout(100);
+    }
+    assert.ok(keys.has("good"), "вид good не выпал ни разу: " + [...keys].join(", "));
+    assert.ok(!keys.has("good2"), "вид с весом 0 всё-таки выпал");
+    assert.ok(!keys.has("bad"), "плохой вид выпал при badChance 0");
+    assert.deepEqual(g.errors, [], "ошибки страницы");
+  } finally { await g.close(); }
+});
+
+// Антиповтор: при двух равных видах ни один не идёт третий раз подряд.
+test("catch: maxRepeat не даёт одному виду выпасть третий раз подряд", async () => {
+  const g = await openGame(browser, server, {
+    archetype: "catch", seed: 5,
+    params: { duration: 20000, spawnStart: 160, spawnMin: 160, badChance: 0, maxRepeat: 2, fallStart: 60, fallMax: 60 },
+    assets: { items: { good: { url: PIC }, good2: { url: PIC }, bad: { url: PIC } } }
+  });
+  try {
+    await g.play();
+    // Журнал по номерам предметов: проба зовётся чаще, чем сыплются предметы,
+    // и без номера один и тот же предмет попал бы в журнал трижды.
+    const order = new Map();
+    for (let guard = 0; guard < 120; guard++) {
+      // Первые кадры сцена ещё не готова — проба отдаёт null, это не конец.
+      const st = await g.scene(() => window.__zvBot.catchPool());
+      if (!st) { await g.page.waitForTimeout(80); continue; }
+      for (const it of st.falling) order.set(it.seq, it.key);
+      if (order.size >= 20) break;
+      await g.page.waitForTimeout(80);
+    }
+    const seq = [...order.keys()].sort((a, b) => a - b).map((k) => order.get(k));
+    const seen = seq.length;
+    let run = 0, prev = null;
+    for (const k of seq) {
+      if (k === prev) run++; else { prev = k; run = 1; }
+      assert.ok(run <= 2, "вид «" + k + "» выпал третий раз подряд: " + seq.join(","));
+    }
+    assert.ok(seq.includes("good") && seq.includes("good2"), "выпал только один вид: " + seq.join(","));
+    assert.ok(seen > 10, "предметов за партию почти не было: " + seen);
+    assert.deepEqual(g.errors, [], "ошибки страницы");
+  } finally { await g.close(); }
+});
+
+// body из config.assets переводится оболочкой в тело: ручных чисел в ките нет.
+test("catch: body { x, y, w, h } из config.assets становится телом корзины и предмета", async () => {
+  const g = await openGame(browser, server, {
+    archetype: "catch", seed: 3,
+    params: { duration: 20000, spawnStart: 200, spawnMin: 200, badChance: 0, fallStart: 60, fallMax: 60 },
+    assets: { items: {
+      basket: { url: PIC, body: { x: 3, y: 4, w: 24, h: 20 } },
+      good: { url: PIC, body: { x: 6, y: 7, w: 18, h: 16 } },
+      bad: { url: PIC }
+    } }
+  });
+  try {
+    await g.play();
+    let st = null;
+    for (let guard = 0; guard < 80; guard++) {
+      st = await g.scene(() => window.__zvBot.catchPool());
+      if (st && st.falling.length) break;
+      await g.page.waitForTimeout(100);
+    }
+    assert.ok(st, "сцена так и не поднялась или предметы не посыпались");
+    assert.deepEqual(st.basketBody, { w: 24, h: 20, x: 3, y: 4 }, "тело корзины не из body: " + JSON.stringify(st.basketBody));
+    assert.ok(st.falling.length, "предметы так и не посыпались");
+    assert.deepEqual(st.falling[0].body, { w: 18, h: 16 }, "тело предмета не из body: " + JSON.stringify(st.falling[0]));
+    assert.deepEqual(g.errors, [], "ошибки страницы");
+  } finally { await g.close(); }
+});
