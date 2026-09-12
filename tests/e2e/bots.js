@@ -289,11 +289,14 @@
       if (!finite(st.pos) || st.pos < 0 || st.pos > st.barWidth) violation("маркер вне шкалы: " + st.pos);
       if (st.zone.x < 0 || st.zone.x + st.zone.w > st.barWidth) violation("зона вне шкалы: " + JSON.stringify(st.zone));
       if (st.zone.w < st.zoneMin) violation("зона уже дна zoneMin: " + st.zone.w);
+      if (typeof sc.score === "number" && (!finite(sc.score) || sc.score < 0)) violation("счёт отрицательный или не число");
       if (sc.tl && sc.tl.pending() >= 50) violation("таймлайн течёт: " + sc.tl.pending() + " шагов");
       if (st.locked) return;                       // пауза между раундами — тап не считается
+      if (state.mode === "novice") {
         // Случайные тапы примерно раз в 500 мс (кадр 1/60 → шанс 1/30).
         if (global.ZV.random.chance(1 / 30)) sc.input.emit("pointerup", { x: 180, y: 320 });
         return;
+      }
       // Ближе всего к центру маркер будет в тот кадр, после которого расстояние
       // до центра начнёт расти. Сравниваем «сейчас» с «через кадр»: пик
       // пройден — тапаем. Страховка на случай, если пик проскочили внутри
