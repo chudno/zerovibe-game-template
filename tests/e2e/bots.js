@@ -145,6 +145,34 @@
       }
     },
     // week4 bots
+    // week5:hidden
+    // Найди предмет: эксперт читает позиции ОСТАВШИХСЯ целей из пробы и тапает
+    // по одной раз в ~300 мс настоящим pointerup сцены — быстрее человек не
+    // ищет, а мгновенный перебор не проверил бы ни подсказку, ни бонус за
+    // скорость. Отвлечения он не трогает. Новичок тапает наугад по полю.
+    hidden: function (sc, now) {
+      if (typeof sc.score === "number" && (!finite(sc.score) || sc.score < 0)) violation("счёт отрицательный или не число");
+      if (sc.tl && sc.tl.pending() >= 50) violation("таймлайн течёт: " + sc.tl.pending() + " шагов");
+      if (!sc.spots) return;
+      for (var i = 0; i < sc.spots.length; i++) {
+        var s = sc.spots[i];
+        if (!finite(s.x) || !finite(s.y)) violation("координата предмета не число");
+        if (s.x < 0 || s.x > 360 || s.y < 0 || s.y > 640) violation("предмет вне канвы");
+      }
+      if (now - (state.lastTapAt || 0) < 300) return;
+      state.lastTapAt = now;
+      state.taps++;
+      if (state.mode === "novice") {
+        // Наугад по всему полю: попасть в 5 целей за партию так почти нельзя.
+        sc.input.emit("pointerup", { x: global.ZV.random.between(8, 352), y: global.ZV.random.between(120, 420) });
+        return;
+      }
+      for (var k = 0; k < sc.spots.length; k++) {
+        if (sc.spots[k].decoy || sc.spots[k].found) continue;
+        sc.input.emit("pointerup", { x: sc.spots[k].x, y: sc.spots[k].y });
+        return;
+      }
+    },
     // Память: эксперт ведёт карту «позиция → значение» из всего, что уже
     // видел (подглядка в начале раунда — тоже наблюдение), и открывает
     // известную пару, иначе новую позицию. Тапы — настоящей мышью снаружи,
@@ -279,6 +307,26 @@
       };
     },
     // week4 probes
+    // week5:hidden
+    // Найди предмет: оставшиеся цели с координатами (тест тапает по ним
+    // настоящей мышью), состояние подсказки и счётчики раунда.
+    hidden: function () {
+      var sc = global.ZV.game.scene.getScene("zv-play");
+      if (!sc || !sc.sys.isActive() || !sc.spots) return null;
+      return {
+        round: sc.roundIndex + 1,
+        left: sc.targetsLeft,
+        spots: sc.spots.filter(function (s) { return !s.found; }).map(function (s) {
+          return { id: s.id, x: s.x, y: s.y, size: s.size, decoy: s.decoy };
+        }),
+        shelf: (sc.shelf || []).map(function (sl) { return { id: sl.spot.id, x: sl.x, y: sl.y, found: sl.spot.found }; }),
+        hintOn: !!sc.hintOn,
+        hintAt: sc.hintSpot ? { x: sc.hintSpot.x, y: sc.hintSpot.y } : null,
+        score: sc.score, found: sc.foundTotal, decoyTaps: sc.decoyTaps,
+        leftMs: Math.max(0, Math.round(sc.deadline - sc.time.now)),
+        over: !!sc.over
+      };
+    },
     // Гибрид: где сейчас игрок — в сюжете или в мини-игре, видна ли кнопка
     // запуска. Сюжетная сцена во время мини-игры СПИТ, поэтому novel() её не
     // отдаёт: здесь смотрим на неё независимо от активности.

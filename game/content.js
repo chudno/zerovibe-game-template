@@ -78,6 +78,8 @@
     binTitleWide:  { width: 166, lines: 2, k: 1 }, // подпись корзины «собери заказ» при 2 корзинах
     binTitle:      { width: 106, lines: 2, k: 1 }, // то же при 3 корзинах
     binTitleSmall: { width: 76,  lines: 2, k: 1 }, // то же при 4 корзинах
+    // week5:hidden
+    hiddenTitle:   { width: 76,  lines: 1, k: 1 }, // подпись предмета на полке «найди предмет» (ячейка 84 px минус поля)
     sortItem:      { width: 120, lines: 1, k: 1 } // подпись под предметом на ленте
   };
   var MAX_LEN = 240;   // страховка от абзацев там, где ждём строку
@@ -582,6 +584,49 @@
     return errs;
   }
 
+  // week5:hidden
+  // «Найди предмет»: словарь спрятанного. Главная гарантия — расстановка
+  // ВОЗМОЖНА: целей и отвлечений не больше, чем влезает на поле при заданной
+  // дистанции, а предметов в файле хватает, чтобы раздать их все. Иначе игра
+  // молча покажет половину раскладки или белый экран вместо партии.
+  var HIDDEN = (typeof module !== "undefined" && module.exports) ? require("./hidden.js") : root.ZV_HIDDEN;
+  var POOL_H = (typeof module !== "undefined" && module.exports) ? require("./pool.js") : root.ZV_POOL;
+  var HIDDEN_FIELD = { x: 8, y: 120, w: 344, h: 300 };   // те же числа, что рисует кит
+  function validateHidden(data, opts) {
+    var errs = [];
+    var items = data && data.items;
+    var shape = POOL_H.checkShape(items, { where: "items", min: 4, max: 40 });
+    for (var s = 0; s < shape.length; s++) errs.push(shape[s]);
+    if (errs.length) return errs;
+
+    items.forEach(function (it, i) {
+      var w = "items[" + i + "]";
+      // Подпись едет на полку «что осталось найти» — самая узкая ячейка игры.
+      textErr(errs, w, it.title, "title", "hiddenTitle");
+      if (it.icon !== undefined && (typeof it.icon !== "string" || !/^[a-z0-9_-]{1,32}$/.test(it.icon))) {
+        errs.push(w + ": icon — ключ картинки: латиница/цифры/-/_ до 32");
+      }
+    });
+    if (errs.length) return errs;
+
+    var p = (opts && opts.params) || {};
+    var targets = typeof p.targets === "number" ? p.targets : 5;
+    var decoys = typeof p.decoys === "number" ? p.decoys : 2;
+    var size = typeof p.size === "number" ? p.size : 40;
+    var minDistance = typeof p.minDistance === "number" ? p.minDistance : 56;
+    var need = targets + decoys;
+    // Предметы в раскладке не повторяются: иначе на полке две «Кепки», и
+    // человек не понимает, какую из них он уже нашёл.
+    if (need > items.length) {
+      errs.push("items: предметов " + items.length + ", а на раскладку нужно " + need +
+        " (targets " + targets + " + decoys " + decoys + ") — добавь предметов или уменьши targets/decoys");
+      return errs;
+    }
+    var fit = HIDDEN.place({ count: need, area: HIDDEN_FIELD, size: size, minDistance: minDistance, decoys: decoys });
+    if (!fit.fits) errs.push(fit.reason);
+    return errs;
+  }
+
   // По ключу на строку: новый кит дописывает СВОЮ строку под маркером и не
   // трогает чужие — иначе параллельные ветки дерутся за одну длинную строку.
   var validators = {
@@ -594,6 +639,8 @@
     // week4
     memory: validateMemory,
     clicker: validateClicker,
+    // week5:hidden
+    hidden: validateHidden,
     sort: validateSort
   };
 

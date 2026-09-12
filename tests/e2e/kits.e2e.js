@@ -1101,3 +1101,121 @@ test("sort: тап настоящей мышью в самый край корз
     assert.deepEqual(g.errors, [], "ошибки страницы");
   } finally { await g.close(); }
 });
+
+// week5: hidden ---------------------------------------------------------------
+// Пять сценариев: эксперт находит всё и выигрывает; новичок тапает наугад и не
+// успевает; подсказка приходит сама после hintMs без тапов; тап настоящей
+// мышью в КРАЙ предмета засчитан (тач-цель ≥24 px); битый контент даёт экран
+// ошибки, а не половину раскладки.
+async function hiddenState(g) {
+  for (let guard = 0; guard < 200; guard++) {
+    const st = await g.scene(() => window.__zvBot.hidden());
+    if (st) return st;
+    await g.page.waitForTimeout(50);
+  }
+  return null;
+}
+
+test("hidden: эксперт находит всё во всех раундах и выигрывает, отвлечения не трогает", async () => {
+  const g = await openGame(browser, server, { archetype: "hidden", seed: 8, params: { duration: 30000, rounds: 2 } });
+  try {
+    const m = await g.mark();
+    await g.play();
+    await g.bot("hidden", "expert");
+    const fin = await g.waitFinish(m, 60000);
+    const rep = await g.botReport();
+    assert.equal(fin.won, true, JSON.stringify({ fin, rep }));
+    assert.equal(fin.meta.archetype, "hidden");
+    assert.equal(fin.meta.rounds, 2, "пройдены не все раунды: " + JSON.stringify(fin.meta));
+    assert.equal(fin.meta.found, 10, "найдено не всё: " + JSON.stringify(fin.meta));
+    assert.equal(fin.meta.decoyTaps, 0, "эксперт знает цели — отвлечения он не трогает");
+    // Бонус за скорость: эксперт тапает сразу, значит очков больше голого hitPoints.
+    assert.ok(fin.score > 10 * 10, "бонус за скорость не начислялся: " + fin.score);
+    clean(g, rep);
+  } finally { await g.close(); }
+});
+
+test("hidden: новичок тапает наугад и за короткую партию не успевает", async () => {
+  const g = await openGame(browser, server, { archetype: "hidden", seed: 8, params: { duration: 8000, rounds: 1 } });
+  try {
+    const m = await g.mark();
+    await g.play();
+    await g.bot("hidden", "novice");
+    const fin = await g.waitFinish(m, 30000);
+    const rep = await g.botReport();
+    assert.equal(fin.won, false, "игра, которая проходится случайными тапами, не игра: " + JSON.stringify(fin));
+    assert.equal(fin.meta.rounds, 0);
+    assert.ok(fin.meta.misses > 0, "новичок обязан мазать: " + JSON.stringify(fin.meta));
+    clean(g, rep);
+  } finally { await g.close(); }
+});
+
+test("hidden: подсказка приходит сама после hintMs без находок и гаснет после находки", async () => {
+  const g = await openGame(browser, server, {
+    archetype: "hidden", seed: 3, params: { duration: 30000, rounds: 1, hintMs: 1500 }
+  });
+  try {
+    await g.play();
+    const before = await hiddenState(g);
+    assert.equal(before.hintOn, false, "подсказка не должна быть видна сразу");
+    await g.page.waitForTimeout(2500);
+    const withHint = await hiddenState(g);
+    assert.equal(withHint.hintOn, true, "подсказка не пришла за hintMs без тапов");
+    assert.ok(withHint.hintAt, "у подсказки нет координат: " + JSON.stringify(withHint));
+    // Кольцо стоит вокруг ЕЩЁ НЕ найденной цели, а не отвлечения.
+    const at = withHint.spots.find((s) => s.x === withHint.hintAt.x && s.y === withHint.hintAt.y);
+    assert.ok(at && !at.decoy, "подсказка показывает не цель: " + JSON.stringify({ at, hintAt: withHint.hintAt }));
+    // Находка гасит подсказку: она про «застрял», а не про «держи всегда».
+    await g.tap(at.x, at.y);
+    await g.page.waitForTimeout(250);
+    const after = await hiddenState(g);
+    assert.equal(after.hintOn, false, "подсказка осталась после находки");
+    assert.equal(after.found, 1);
+    clean(g);
+  } finally { await g.close(); }
+});
+
+test("hidden: тап настоящей мышью в край предмета засчитан, тап по отвлечению отнимает время", async () => {
+  const g = await openGame(browser, server, {
+    archetype: "hidden", seed: 3, params: { duration: 30000, rounds: 1, hintMs: 0, decoyPenaltyMs: 3000 }
+  });
+  try {
+    await g.play();
+    const st = await hiddenState(g);
+    const target = st.spots.find((s) => !s.decoy);
+    const decoy = st.spots.find((s) => s.decoy);
+    assert.ok(target && decoy, "в раскладке нет цели или отвлечения: " + JSON.stringify(st.spots));
+
+    // Целимся в 2 px от края квадрата предмета — тач-цель обязана достать.
+    const edgeX = target.x - Math.floor(target.size / 2) + 2;
+    await g.tap(edgeX, target.y);
+    await g.page.waitForTimeout(250);
+    const found = await hiddenState(g);
+    assert.equal(found.found, 1, "тап в край предмета не засчитан — тач-цель уже 24 px");
+
+    // Отвлечение: очки не падают, а время — да.
+    const beforeMs = found.leftMs, beforeScore = found.score;
+    await g.tap(decoy.x, decoy.y);
+    await g.page.waitForTimeout(250);
+    const after = await hiddenState(g);
+    assert.equal(after.decoyTaps, 1, "тап по отвлечению не засчитан: " + JSON.stringify(after));
+    assert.equal(after.score, beforeScore, "отвлечение отняло очки — наказание должно быть временем");
+    assert.ok(beforeMs - after.leftMs >= 3000, `время не отнято: ${beforeMs} → ${after.leftMs}`);
+    // Отвлечения нет на полке: искать его не просили.
+    assert.equal(after.shelf.some((s) => s.id === decoy.id), false, "отвлечение попало на полку");
+    clean(g);
+  } finally { await g.close(); }
+});
+
+test("hidden: битый контент — экран ошибки и событие error, а не половина раскладки", async () => {
+  const g = await openGame(browser, server, {
+    archetype: "hidden", seed: 1,
+    content: { hidden: { items: [{ id: "a", title: "Очень длинное название предмета на всю полку", icon: "a" }] } }
+  });
+  try {
+    const err = await g.expect("error", () => g.play(), 5000);
+    assert.ok(err.details.length >= 1 && err.details[0].includes("items"), JSON.stringify(err));
+    assert.equal(g.errors.length, 1, g.errors.join("\n"));
+    assert.ok(g.errors[0].includes("content/hidden.json"));
+  } finally { await g.close(); }
+});
