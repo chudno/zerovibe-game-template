@@ -1,0 +1,14 @@
+{
+  "items": [
+    { "id": "keys", "title": "Ключи", "icon": "keys" },
+    { "id": "phone", "title": "Телефон", "icon": "phone" },
+    { "id": "wallet", "title": "Кошелёк", "icon": "wallet" },
+    { "id": "umbrella", "title": "Зонт", "icon": "umbrella" },
+    { "id": "bottle", "title": "Бутылка", "icon": "bottle" },
+    { "id": "glove", "title": "Перчатка", "icon": "glove" },
+    { "id": "note", "title": "Записка", "icon": "note" },
+    { "id": "cap", "title": "Кепка", "icon": "cap" },
+    { "id": "ball", "title": "Мяч", "icon": "ball" },
+    { "id": "lamp", "title": "Фонарик", "icon": "lamp" }
+  ]
+}

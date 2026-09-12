@@ -62,6 +62,11 @@ game/clicker.js       экономика кликера числами: парт
 game/sort.js          темп «собери заказ» числами: окно реакции и пауза между
                       предметами на всём диапазоне скоростей ленты
 game/kits/sort/       кит «Собери заказ» (+ README, content/sort.json)
+<!-- week5:hidden -->
+game/hidden.js        расстановка «найди предмет» числами: без наложений, с
+                      минимальной дистанцией, целыми координатами и числом
+                      «сколько предметов влезет» в тексте ошибки
+game/kits/hidden/     кит «Найди предмет» (+ README, content/hidden.json)
 game/main.js          выбор кита по archetype
 game/kits/*/          киты: runner, catch, quiz, persona, wheel, platformer,
                       novel, quest, clicker (+ README)
@@ -78,7 +83,8 @@ docs/brief.md         бриф и концепт игры (в публикаци
 ## С чего начать
 
 1. `game/config.js` — название, `archetype` (`runner` | `catch` | `quiz` |
-   `persona` | `wheel` | `platformer` | `novel` | `quest` | `clicker`), цвета игры
+   `persona` | `wheel` | `platformer` | `novel` | `quest` | `clicker` |
+   `hidden`), цвета игры
    (`theme`), `params`, секция `assets`.
 2. `game/kits/<archetype>/README.md` — параметры кита (ключи `params` с
    дефолтами) и формат его файла в `content/`.
@@ -266,6 +272,9 @@ iframe.contentWindow.postMessage({ source: "zv-host", type: "restart" }, "*");
 - экономика кликера (`game/clicker.test.js`): партия детерминирована, цель
   достижима при лучшей игре и НЕ достижима вчетверо более медленным тапом без
   покупок, кулдаун тапа держит потолок темпа, `needs` не блокирует очередь;
+- расстановка «найди предмет» (`game/hidden.test.js`): на 200 сидах предметы
+  не налезают, держат дистанцию и лежат в поле; невместимость объясняется
+  числом, сколько предметов туда влезет
 - темп «собери заказ» (`game/sort.test.js`): на любой скорости ленты предмет
   видно не меньше 350 мс и пауза между предметами длиннее его проезда — то же
   число валидатор проверяет по `config.params` и объясняет словами;
