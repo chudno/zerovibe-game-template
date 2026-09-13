@@ -70,8 +70,8 @@ test("solve: монеты — над полом достижимы, замуро
   assert.ok(air.errors[0].includes("старт над пропастью"), air.errors[0]);
 });
 
-test("solve: план исполняется симулятором — герой доходит до выхода (content и сгенерированные уровни)", () => {
-  const data = require("../content/levels.json");
+test("solve: план исполняется симулятором — герой доходит до выхода (образец и сгенерированные уровни)", () => {
+  const data = require("../tests/fixtures/sample-levels.json");
   for (const lv of data.levels) {
     const v = L.validateLevel(lv.map);
     assert.deepEqual(v.errors, [], lv.name);

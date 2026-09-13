@@ -102,13 +102,13 @@ test("visibleMs: сколько мс предмет виден на своём �
   assert.equal(P.visibleMs(90, 0), 0);
 });
 
-// --- категории и spread на реальном content/sort.json (кит «собери заказ») ---
+// --- категории и spread на образце sort (tests/fixtures/sample-sort.json) (кит «собери заказ») ---
 // Пул проверяется не на выдуманных фруктах, а на файле, который поедет в
 // прод: у «собери заказ» категория — это корзина, и ровный поток по корзинам
 // и есть механика. Кит кладёт bin в category — здесь та же подготовка.
 const fsSort = require("node:fs");
 const pathSort = require("node:path");
-const SORT_DATA = JSON.parse(fsSort.readFileSync(pathSort.join(__dirname, "..", "content", "sort.json"), "utf8"));
+const SORT_DATA = JSON.parse(fsSort.readFileSync(pathSort.join(__dirname, "..", "tests", "fixtures", "sample-sort.json"), "utf8"));
 const SORT_ITEMS = SORT_DATA.items.map((it) => ({ id: it.id, title: it.title, category: it.bin, weight: it.weight === undefined ? 1 : it.weight }));
 
 test("sort: категории пула — корзины файла плюс junk, в порядке первого появления", () => {

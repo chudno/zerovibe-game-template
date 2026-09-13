@@ -9,7 +9,9 @@ const fs = require("node:fs");
 const path = require("node:path");
 const C = require("./clicker.js");
 
-const data = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "content", "clicker.json"), "utf8"));
+// Образец кликера — фикстура: content/clicker.json проекта агент заменяет своей игрой,
+// его проверяет tests/content.test.js.
+const data = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "tests", "fixtures", "sample-clicker.json"), "utf8"));
 const expert = (d, p) => C.simulate(d || data, p || {}, { taps: true, care: true, plan: C.best(d || data, p || {}).plan });
 
 test("детерминизм: одни данные и один план — партия байт-в-байт та же", () => {
@@ -20,7 +22,7 @@ test("детерминизм: одни данные и один план — п�
   assert.deepEqual(C.best(data, {}), C.best(data, {}));
 });
 
-test("боевой content/clicker.json: цель достижима при лучшей игре и с запасом по времени", () => {
+test("образец кликера: цель достижима при лучшей игре и с запасом по времени", () => {
   const b = C.best(data, {});
   assert.ok(b.reachable, `цель недостижима: ${JSON.stringify(b)}`);
   // Запас на кадры браузера: e2e даёт боту потолок best.seconds·1.35, и это

@@ -1,0 +1,18 @@
+{
+  "bins": [
+    { "id": "cold", "title": "Холод", "color": "#38bdf8" },
+    { "id": "hot", "title": "Горячее", "color": "#ff5f6d" },
+    { "id": "dry", "title": "Сухое", "color": "#d9a100" }
+  ],
+  "items": [
+    { "id": "ice", "title": "Лёд", "bin": "cold", "weight": 3, "icon": "ice" },
+    { "id": "milk", "title": "Молоко", "bin": "cold", "weight": 3, "icon": "milk" },
+    { "id": "soup", "title": "Суп", "bin": "hot", "weight": 3, "icon": "soup" },
+    { "id": "pie", "title": "Пирог", "bin": "hot", "weight": 2, "icon": "pie" },
+    { "id": "tea", "title": "Чай", "bin": "hot", "weight": 2, "icon": "tea" },
+    { "id": "bread", "title": "Хлеб", "bin": "dry", "weight": 3, "icon": "bread" },
+    { "id": "pasta", "title": "Паста", "bin": "dry", "weight": 2, "icon": "pasta" },
+    { "id": "box", "title": "Пустая коробка", "bin": "junk", "weight": 2, "icon": "box" },
+    { "id": "receipt", "title": "Чек", "bin": "junk", "weight": 1, "icon": "receipt" }
+  ]
+}

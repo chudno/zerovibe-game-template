@@ -126,11 +126,11 @@ const C = require("./content.js");
 const fs = require("node:fs");
 const path = require("node:path");
 
-const REAL = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "content", "hidden.json"), "utf8"));
+const REAL = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "tests", "fixtures", "sample-hidden.json"), "utf8"));   // образец, не content/ проекта
 const copy = () => JSON.parse(JSON.stringify(REAL));
 const first = (data, opts) => (C.validate("hidden", data, opts)[0] || "");
 
-test("боевой content/hidden.json проходит валидатор и с параметрами кита", () => {
+test("образец «найди предмет» проходит валидатор и с параметрами кита", () => {
   assert.deepEqual(C.validate("hidden", REAL), []);
   assert.deepEqual(C.validate("hidden", REAL, { params: DEFAULTS }), []);
   assert.ok(REAL.items.length >= 8, "в образце меньше восьми предметов: " + REAL.items.length);

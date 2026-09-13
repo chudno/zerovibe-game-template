@@ -1,0 +1,91 @@
+{
+  "start": "intro",
+  "vars": { "hurry": 0, "careful": false },
+  "chapters": ["intro", "road", "meet"],
+  "nodes": {
+    "intro": {
+      "bg": "office",
+      "portrait": "hero",
+      "speaker": "Курьер",
+      "text": "Утро. Заказ горит: клиент ждёт через двадцать минут, а до него полгорода.",
+      "choices": [
+        { "text": "Бегу сразу", "goto": "road", "add": { "hurry": 1 } },
+        { "text": "Сначала проверю адрес", "goto": "check", "set": { "careful": true } }
+      ]
+    },
+    "check": {
+      "bg": "office",
+      "portrait": "hero",
+      "speaker": "Курьер",
+      "text": "Адрес верный, подъезд второй, код на двери записан. Минута потрачена не зря.",
+      "goto": "road"
+    },
+    "road": {
+      "bg": "street",
+      "portrait": "hero",
+      "speaker": "Курьер",
+      "text": "Улица. Слева парк с дорожками, справа проспект с пробкой. Куда?",
+      "choices": [
+        { "text": "Через парк", "goto": "park" },
+        { "text": "По проспекту", "goto": "avenue" },
+        { "text": "Позвонить клиенту", "goto": "call", "if": { "careful": true } }
+      ]
+    },
+    "park": {
+      "bg": "park",
+      "portrait": "hero",
+      "speaker": "Курьер",
+      "text": "Тропинки, скамейки, ни одной машины. Быстро и без нервов.",
+      "goto": "meet"
+    },
+    "avenue": {
+      "bg": "street",
+      "portrait": "hero",
+      "speaker": "Курьер",
+      "text": "Светофор мигает жёлтым. Перебежать или подождать?",
+      "choices": [
+        { "text": "Успею на жёлтый", "goto": "meet", "add": { "hurry": 1 } },
+        { "text": "Подожду зелёный", "goto": "meet" }
+      ]
+    },
+    "call": {
+      "bg": "street",
+      "portrait": "client",
+      "speaker": "Клиент",
+      "text": "Спасибо, что позвонили! Я спущусь к подъезду, чтобы вы не искали.",
+      "goto": "meet"
+    },
+    "meet": {
+      "bg": "door",
+      "portrait": "client",
+      "speaker": "Клиент",
+      "text": "Дверь открывается. Клиент смотрит на часы, потом на пакет.",
+      "choices": [
+        { "text": "Улыбнуться и отдать заказ", "goto": "friend" },
+        { "text": "Молча отдать и уйти", "goto": "delivered" },
+        { "text": "Извиниться за спешку", "goto": "late", "if": { "hurry": 2 } }
+      ]
+    },
+    "friend": {
+      "bg": "door",
+      "portrait": "client",
+      "speaker": "Клиент",
+      "text": "«Вы всегда так вовремя? Буду заказывать только у вас».",
+      "end": { "outcome": "friend", "title": "Постоянный клиент", "text": "Заказ доставлен, и клиент вернётся.", "won": true }
+    },
+    "delivered": {
+      "bg": "door",
+      "portrait": "hero",
+      "speaker": "Курьер",
+      "text": "Заказ на месте. Ни слова лишнего, следующий адрес уже в телефоне.",
+      "end": { "outcome": "delivered", "title": "Доставлено", "text": "Всё по инструкции.", "won": true }
+    },
+    "late": {
+      "bg": "door",
+      "portrait": "client",
+      "speaker": "Клиент",
+      "text": "«Пакет помят, и вы запыхались. В следующий раз лучше не спешите».",
+      "end": { "outcome": "late", "title": "Слишком быстро", "text": "Доставлено, но осадок остался.", "won": false }
+    }
+  }
+}

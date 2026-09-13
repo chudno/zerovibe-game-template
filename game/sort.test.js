@@ -69,11 +69,11 @@ const C = require("./content.js");
 const fs = require("node:fs");
 const path = require("node:path");
 
-const REAL = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "content", "sort.json"), "utf8"));
+const REAL = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "tests", "fixtures", "sample-sort.json"), "utf8"));   // образец, не content/ проекта
 const copy = () => JSON.parse(JSON.stringify(REAL));
 const first = (data, opts) => (C.validate("sort", data, opts)[0] || "");
 
-test("боевой content/sort.json проходит валидатор и с параметрами кита", () => {
+test("образец «собери заказ» проходит валидатор и с параметрами кита", () => {
   assert.deepEqual(C.validate("sort", REAL), []);
   assert.deepEqual(C.validate("sort", REAL, { params: DEFAULTS }), []);
   // Тема «собери заказ»: 3 корзины и мусор, без которого игра — «тапай всё».

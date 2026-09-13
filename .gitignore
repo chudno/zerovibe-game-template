@@ -3,3 +3,5 @@
 ._*
 # зависимости автопрогона
 tests/e2e/node_modules/
+# вывод автопрогона
+test-results/

@@ -1,5 +1,5 @@
 // Граф новеллы: форма, обход по состояниям (достижимость, концовки, условные
-// варианты, ловушки), рантайм и пути до концовок. content/novel.json обязан
+// варианты, ловушки), рантайм и пути до концовок. Образец tests/fixtures/sample-novel.json обязан
 // проходить целиком (см. content.test.js — там же длины текстов).
 "use strict";
 const test = require("node:test");
@@ -82,7 +82,7 @@ test("рантайм: эффекты, видимые варианты, лине�
 });
 
 test("paths: до каждой концовки — индексы видимых вариантов, исполняются рантаймом", () => {
-  for (const data of [base(), require("../content/novel.json")]) {
+  for (const data of [base(), require("../tests/fixtures/sample-novel.json")]) {
     const p = N.paths(data);
     assert.ok(Object.keys(p).length >= 2);
     for (const outcome of Object.keys(p)) {
@@ -98,8 +98,8 @@ test("paths: до каждой концовки — индексы видимы�
   }
 });
 
-test("content/novel.json: граф целиком, три главы и условная реплика", () => {
-  const data = require("../content/novel.json");
+test("образец новеллы: граф целиком, три главы и условная реплика", () => {
+  const data = require("../tests/fixtures/sample-novel.json");
   assert.deepEqual(N.check(data), []);
   const ex = N.explore(data);
   assert.deepEqual(Object.keys(ex.endings).sort(), ["delivered", "friend", "late"]);
@@ -143,8 +143,8 @@ test("items: проверка ссылок и выдачи, инвентарь �
   assert.deepEqual(Object.keys(N.paths(q())).sort(), ["left", "open"]);
 });
 
-test("content/quest.json: граф с предметами целиком, три концовки, все предметы выдаются", () => {
-  const data = require("../content/quest.json");
+test("образец квеста: граф с предметами целиком, три концовки, все предметы выдаются", () => {
+  const data = require("../tests/fixtures/sample-quest.json");
   assert.deepEqual(N.check(data), []);
   assert.deepEqual(Object.keys(N.paths(data)).sort(), ["delivered", "late", "unpaid"]);
   const C = require("./content.js");
