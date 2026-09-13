@@ -7,28 +7,9 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
-const vm = require("node:vm");
 
-const root = path.join(__dirname, "..");
-const kitsDir = path.join(root, "game", "kits");
-const kitNames = fs.readdirSync(kitsDir).filter((d) => fs.existsSync(path.join(kitsDir, d, "kit.js")));
-
-// Кит грузится в песочнице с заглушкой Phaser: при загрузке ему нужны только
-// Phaser.Scene.prototype, window и чистые модули game/*.js (index.html
-// подключает их раньше китов).
-const PURE = ["fontdata.js", "font.js", "layout.js", "random.js", "grid.js", "timeline.js", "save.js", "pool.js", "levels.js", "novel.js", "content.js", "stage.js"];
-function loadKit(name) {
-  const src = fs.readFileSync(path.join(kitsDir, name, "kit.js"), "utf8");
-  const window = { ZV_KITS: {}, ZV_GAME: {} };
-  const ctx = vm.createContext({
-    window,
-    Phaser: { Scene: function Scene() {}, Display: {}, Math: {}, Animations: { Events: {} } },
-    console
-  });
-  for (const f of PURE) vm.runInContext(fs.readFileSync(path.join(root, "game", f), "utf8"), ctx, { filename: "game/" + f });
-  vm.runInContext(src, ctx, { filename: name + "/kit.js" });
-  return { kit: window.ZV_KITS[name], src };
-}
+const { root, kitsDir, loadKit } = require("./kitload.js");
+const kitNames = require("./kitload.js").kitNames();
 
 test("китов не меньше восьми", () => {
   assert.ok(kitNames.length >= 8, kitNames.join(", "));

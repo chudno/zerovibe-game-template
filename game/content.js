@@ -61,18 +61,11 @@
     itemTitle:   { width: 260, lines: 1, k: 1 }, // название предмета в инвентаре и тосте
     // week4 areas: новая область — своя строка, в алфавитном порядке
     memoryCard:  { width: 54,  lines: 2, k: 1 }, // подпись на карточке «памяти»: самая узкая ячейка (60 px минус поля)
-    novelRules:  { width: 300, lines: 1, k: 1 }, // строка-правило под кнопкой мини-игры
+    novelRules:  { width: 300, lines: 2, k: 1 }, // правило под кнопкой мини-игры: до двух строк (stage.js переносит по тем же метрикам)
     // week4: clicker
     careTitle:   { width: 64,  lines: 1, k: 1 }, // подпись кнопки ухода 72×72 у кликера
     stageText:   { width: 290, lines: 2, k: 1 }, // строка стадии кликера под заголовком
     stageTitle:  { width: 200, lines: 1, k: 2, kMin: 1 }, // название стадии кликера (надпись и результат)
-    levelHint:   { width: 290, lines: 2, k: 1 }, // подсказка под ней
-    novelSpeaker:{ width: 200, lines: 1, k: 1 }, // имя говорящего над репликой
-    novelText:   { width: 312, lines: 5, k: 1 }, // реплика в панели новеллы
-    novelChoice: { width: 270, lines: 2, k: 1 }, // вариант ответа (кнопка 40 px: 1 строка кеглем 2 или 2 кеглем 1)
-    endTitle:    { width: 300, lines: 2, k: 2 }, // заголовок концовки
-    endText:     { width: 290, lines: 4, k: 1 }, // описание концовки
-    itemTitle:   { width: 260, lines: 1, k: 1 }, // название предмета в инвентаре и тосте
     // week4
     // Ширина подписи корзины = ровно тот wordWrap, что ставит кит: floor(360/n) − 14.
     binTitleWide:  { width: 166, lines: 2, k: 1 }, // подпись корзины «собери заказ» при 2 корзинах
@@ -97,6 +90,7 @@
     if (!isStr(v, 1, MAX_LEN)) { errs.push(where + ": " + name + " — непустая строка до " + MAX_LEN + " символов"); return; }
     fitErr(errs, where, v, name, area);
   }
+  function linesWord(n) { return n + (n === 1 ? " строки" : " строк"); }
   function fitErr(errs, where, v, name, area) {
     var a = AREAS[area];
     var text = (a.prefix || "") + v;
@@ -105,7 +99,7 @@
     var k = FONT.fit(text, a.width, a.lines, a.k);
     if (k >= (a.kMin || a.k)) return;
     var perLine = Math.floor(a.width / (8 * (a.kMin || a.k)));
-    errs.push(where + ": " + name + " не влезает — не больше " + a.lines + " строк по ~" + perLine + " знаков");
+    errs.push(where + ": " + name + " не влезает — не больше " + linesWord(a.lines) + " по ~" + perLine + " знаков");
   }
 
   // Приз: заголовок обязателен, остальное по желанию. url — только абсолютный
@@ -321,7 +315,7 @@
     if (miss.length) { errs.push(where + ": title — нет таких символов в шрифте: " + miss.join(" ")); return; }
     var a = AREAS.memoryCard;
     if (FONT.fit(v, wrap, a.lines, a.k) >= a.k) return;
-    errs.push(where + ": title не влезает — не больше " + a.lines + " строк по ~" + Math.floor(wrap / (8 * a.k)) +
+    errs.push(where + ": title не влезает — не больше " + linesWord(a.lines) + " по ~" + Math.floor(wrap / (8 * a.k)) +
       " знаков при " + pairs + " " + plural(pairs, "паре", "парах", "парах") + " (ячейка тем уже, чем больше пар)");
   }
   function validateMemory(data, opts) {

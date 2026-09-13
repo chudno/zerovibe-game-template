@@ -154,7 +154,9 @@
         if (onStart) onStart();
       }, { width: CHOICES.width, height: 48 });
       if (rules) {
-        st.rulesText = ZV.ui.text(scene, W / 2, CHOICES.y + 44, rules, { size: 1, color: "#9aa0b5", align: "center" })
+        // До двух строк в CHOICES.width — тот же перенос, что у валидатора (novelRules).
+        var lines = ZV.font.wrap(rules, CHOICES.width, 1).join("\n");
+        st.rulesText = ZV.ui.text(scene, W / 2, CHOICES.y + 44, lines, { size: 1, color: "#9aa0b5", align: "center" })
           .setOrigin(0.5, 0).setDepth(6);
       }
     };

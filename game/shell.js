@@ -800,7 +800,10 @@
       },
       scale: {
         mode: Phaser.Scale.FIT,
-        autoCenter: Phaser.Scale.CENTER_BOTH,
+        // Центрирует CSS-флекс #game (style.css), он же учитывает safe-area.
+        // CENTER_BOTH добавлял к нему свой margin: на широком экране канва
+        // уезжала вправо и вниз на половину свободного места.
+        autoCenter: Phaser.Scale.NO_CENTER,
         autoRound: true                // размер канвы целыми пикселями
       },
       // fixedStep: физический шаг всегда 1/60 с, даже когда кадры проседают.

@@ -10,6 +10,7 @@ html, body {
   -webkit-tap-highlight-color: transparent;
   overscroll-behavior: none;
 }
+/* Канву центрирует только этот флекс; Phaser — NO_CENTER (shell.js). */
 #game {
   position: fixed; inset: 0;
   padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
